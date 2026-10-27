@@ -2,7 +2,7 @@ import type { Config, Decision, QuestionRequest } from "./types"
 import type { Plugin } from "@opencode-ai/plugin"
 import { AgentTracker, isAutonomousAgent } from "./detect"
 import { gatherContext } from "./context"
-import { decideWithJev } from "./engines/jev"
+import { decideWithJev, resolveJevCarrier } from "./engines/jev"
 import { decideWithLlm } from "./engines/llm"
 import { log } from "./log"
 
@@ -34,8 +34,14 @@ async function decide(config: Config, questions: QuestionRequest["questions"], c
 
   for (const engine of order) {
     if (engine === "jev") {
-      if (!config.jev.apiKey) {
-        last = { ok: false, answers: [], confidences: [], engine: "jev", error: "jev apiKey missing" }
+      if (!resolveJevCarrier(config)) {
+        last = {
+          ok: false,
+          answers: [],
+          confidences: [],
+          engine: "jev",
+          error: "jev unavailable: no apiKey in config and no OPENCODE_API_KEY / OPENROUTER_API_KEY in env",
+        }
         continue
       }
       const decision = await decideWithJev(config, questions, context)

@@ -85,14 +85,54 @@ describe("parseJevResponse", () => {
     expect(parsed!.answers[0]).toEqual(["same"])
   })
 
-  test("noul answers collect yes labels", () => {
+  test("noul probabilities select labels and set confidence", () => {
     const set = buildJevQuestions([multi])!
     const parsed = parseJevResponse(set, [multi], {
-      q0_o0: { type: "noul", noul: true, confidence: 0.9 },
-      q0_o1: { type: "noul", noul: false, confidence: 0.7 },
+      q0_o0: { type: "noul", noul: 0.9 },
+      q0_o1: { type: "noul", noul: 0.1 },
     })
     expect(parsed!.answers[0]).toEqual(["auth"])
     expect(parsed!.confidences[0]).toBe(0.9)
+  })
+
+  test("noul gates selection at 0.5", () => {
+    const set = buildJevQuestions([multi])!
+    const parsed = parseJevResponse(set, [multi], {
+      q0_o0: { type: "noul", noul: 0.51 },
+      q0_o1: { type: "noul", noul: 0.49 },
+    })
+    expect(parsed!.answers[0]).toEqual(["auth"])
+    expect(parsed!.confidences[0]).toBe(0.51)
+  })
+
+  test("borderline noul lowers multi-select confidence", () => {
+    const set = buildJevQuestions([multi])!
+    const parsed = parseJevResponse(set, [multi], {
+      q0_o0: { type: "noul", noul: 0.95 },
+      q0_o1: { type: "noul", noul: 0.5 },
+    })
+    expect(parsed!.answers[0]).toEqual(["auth"])
+    expect(parsed!.confidences[0]).toBe(0.5)
+  })
+
+  test("all-low noul yields empty selection with high confidence", () => {
+    const set = buildJevQuestions([multi])!
+    const parsed = parseJevResponse(set, [multi], {
+      q0_o0: { type: "noul", noul: 0.02 },
+      q0_o1: { type: "noul", noul: 0.03 },
+    })
+    expect(parsed!.answers[0]).toEqual([])
+    expect(parsed!.confidences[0]).toBe(0.97)
+  })
+
+  test("boolean noul still accepted defensively", () => {
+    const set = buildJevQuestions([multi])!
+    const parsed = parseJevResponse(set, [multi], {
+      q0_o0: { type: "noul", noul: true },
+      q0_o1: { type: "noul", noul: false },
+    })
+    expect(parsed!.answers[0]).toEqual(["auth"])
+    expect(parsed!.confidences[0]).toBe(1)
   })
 
   test("noul defensive parsing accepts choice yes/no", () => {

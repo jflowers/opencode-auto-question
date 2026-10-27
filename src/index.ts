@@ -2,6 +2,7 @@ import type { Plugin, PluginModule } from "@opencode-ai/plugin"
 import { loadConfig } from "./config"
 import { AgentTracker } from "./detect"
 import { handleQuestionAsked, type HandlerDeps } from "./orchestrator"
+import { resolveJevCarrier } from "./engines/jev"
 import { log, setVerbose } from "./log"
 import type { QuestionRequest } from "./types"
 
@@ -79,9 +80,11 @@ const plugin: Plugin = async (input) => {
   }
 
   setVerbose(config.verbose)
+  const jevCarrier = resolveJevCarrier(config)
   log("info", "auto-question plugin loaded", {
     agents: config.agents,
     engine: config.engine,
+    jev: jevCarrier ? `${jevCarrier.carrier} (${jevCarrier.model})` : "unavailable",
     confidenceThreshold: config.confidenceThreshold,
     fallbackThreshold: config.fallbackThreshold,
   })

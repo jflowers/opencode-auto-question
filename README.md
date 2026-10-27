@@ -12,7 +12,7 @@ Session agent in config "agents" list? ── NO ──▶ human answers (TUI fo
         │ YES
         ▼
 ╔══ PASS 1: fast decision ══════════════════════╗
-║ Jev Choice/Noul (OpenRouter Decisions API)    ║
+║ Jev Choice/Noul (OpenCode Zen or OpenRouter)  ║
 ║ or LLM JSON contract (chat completions)       ║
 ║ state = question + options only               ║
 ╚═══════════════════════════════════════════════╝
@@ -53,6 +53,15 @@ cp config/auto-question.jsonc ~/.config/opencode/auto-question.jsonc
 
 Switch a session to the `autonomy` agent, then trigger any question — the decision engine answers it.
 
+> **Important — custom agents need `permission: question: allow`**: opencode's base permission ruleset denies the question tool for every agent; the built-in `build`/`plan` agents override it back to allow, but custom agents do not (the model then never sees the question tool). `agents/autonomy.md` includes the required frontmatter:
+>
+> ```yaml
+> permission:
+>   question: allow
+> ```
+>
+> If you use a different autonomous agent, add the same override to its frontmatter.
+
 ## Config
 
 `~/.config/opencode/auto-question.jsonc` (JSONC with `{env:VAR}` interpolation). See [config/auto-question.jsonc](config/auto-question.jsonc) for all options:
@@ -61,6 +70,7 @@ Switch a session to the `autonomy` agent, then trigger any question — the deci
 |---|---|---|
 | `agents` | `["autonomy"]` | Session agents that trigger auto-answering |
 | `engine` | `"auto"` | `"jev"`, `"llm"`, or `"auto"` (jev first, llm fallback) |
+| `jev` | auto-discovered | Carrier: explicit `apiKey`+`baseUrl`+`model` in config, else `OPENCODE_API_KEY` → OpenCode Zen (`jev-1.13`, ~$0.000013/call), else `OPENROUTER_API_KEY` → OpenRouter (`typesafe/jev-1.14`) |
 | `confidenceThreshold` | `0.6` | Pass 1 answers at or above this immediately |
 | `fallbackThreshold` | `0.35` | After pass 2, below this goes to the human |
 | `contextGathering.agent` | `"auto-question-ctx"` | Subagent that gathers context |
@@ -69,6 +79,8 @@ Switch a session to the `autonomy` agent, then trigger any question — the deci
 ## Notes
 
 - Built for the opencode **1.19.x V1 plugin API**. It listens for `question.asked` (live on 1.19.0) and `question.v2.asked` (same payload shape) and replies over the server's question endpoints, so no tool interception is needed.
+- **Jev carriers**: explicit config values always win; otherwise the plugin auto-discovers — `OPENCODE_API_KEY` (from `opencode /connect`) routes to OpenCode Zen with `jev-1.13` (~$0.000013/call; `jev-1.13-free` works only after allowing free endpoints in the workspace Privacy settings); `OPENROUTER_API_KEY` routes to the OpenRouter Decisions API with `typesafe/jev-1.14`. Zen serves bare model IDs; OpenRouter needs the prefixed slug (`jev-latest` is not valid on Zen — pin a version).
+- **Noul semantics**: Jev multi-select (`noul`) answers are probabilities in `[0,1]`, not booleans. An option is selected when `noul > 0.5` (exactly 0.5 is maximal uncertainty and selects nothing); question confidence is the weakest option certainty (`min over options of max(p, 1-p)`), so a borderline option triggers context gathering.
 - Session-agent detection uses user-message events plus a session-messages fallback (the v1.19 session type has no agent field).
 - Context gathering creates a temporary child session (deleted afterwards) that inherits the project directory, so per-project tools like dewey MCP are available to the context subagent.
 - Decisions and errors are logged to `~/.local/share/opencode-auto-question/log.txt` (set `"verbose": true` for debug detail).

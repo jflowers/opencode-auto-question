@@ -5,9 +5,14 @@ import type { QuestionInfo } from "./types"
  *
  * Jev Decisions API primitives:
  *   choice — "which option?" → { type: "choice", instructions, criteria: {label: description} }
- *   noul   — "yes/no?"        → { type: "noul", instructions }
+ *   noul   — "yes/no?"        → { type: "noul", instructions } — the answer's
+ *            `noul` field is a probability in [0,1] (e.g. {"noul": 0.93}), not
+ *            a boolean; an option is selected when noul > 0.5 (exactly 0.5 is
+ *            maximal uncertainty and selects nothing).
  * Single-select questions map to one choice question; multi-select questions
- * map to one noul question per option.
+ * map to one noul question per option. Multi-select question confidence is the
+ * weakest option certainty: min over options of max(p, 1 - p), so a borderline
+ * option (p ≈ 0.5) lowers the whole question's confidence.
  */
 
 export interface JevLayoutEntry {
@@ -63,13 +68,20 @@ function stripDedupSuffix(key: string): string {
   return match ? match[1] : key
 }
 
-function parseNoul(answer: unknown): boolean | null {
+function parseNoul(answer: unknown): { yes: boolean; probability: number } | null {
   const a = answer as { noul?: unknown; choice?: unknown; answer?: unknown } | undefined
   if (!a || typeof a !== "object") return null
-  if (typeof a.noul === "boolean") return a.noul
-  if (a.choice === true || a.choice === "yes" || a.choice === "true") return true
-  if (a.choice === false || a.choice === "no" || a.choice === "false") return false
-  if (typeof a.answer === "boolean") return a.answer
+  // Jev noul answers are probabilities, e.g. {"noul": 0.93}. Exactly 0.5 is
+  // maximal uncertainty — treated as "no" (conservative: fewer selections).
+  if (typeof a.noul === "number" && Number.isFinite(a.noul)) {
+    const probability = clamp01(a.noul)
+    return { yes: probability > 0.5, probability }
+  }
+  // Defensive fallbacks for non-probability shapes.
+  if (typeof a.noul === "boolean") return { yes: a.noul, probability: a.noul ? 1 : 0 }
+  if (a.choice === true || a.choice === "yes" || a.choice === "true") return { yes: true, probability: 1 }
+  if (a.choice === false || a.choice === "no" || a.choice === "false") return { yes: false, probability: 0 }
+  if (typeof a.answer === "boolean") return { yes: a.answer, probability: a.answer ? 1 : 0 }
   return null
 }
 
@@ -85,6 +97,7 @@ export function parseJevResponse(
 ): { answers: string[][]; confidences: number[] } | null {
   const result: string[][] = questions.map(() => [])
   const confidences: number[] = questions.map(() => 0)
+  const multiCertainty: number[] = questions.map(() => 1)
 
   for (const entry of set.layout) {
     if (entry.kind === "choice") {
@@ -97,12 +110,17 @@ export function parseJevResponse(
       confidences[entry.questionIndex] = clamp01(a.confidence)
     } else {
       const key = `q${entry.questionIndex}_o${entry.optionIndex}`
-      const yes = parseNoul(answers[key])
-      if (yes === null) return null
-      if (yes) result[entry.questionIndex].push(entry.label)
-      const a = answers[key] as { confidence?: unknown } | undefined
-      confidences[entry.questionIndex] = Math.max(confidences[entry.questionIndex], clamp01(a?.confidence))
+      const parsed = parseNoul(answers[key])
+      if (!parsed) return null
+      if (parsed.yes) result[entry.questionIndex].push(entry.label)
+      // Certainty of this option's yes/no judgment: 1 when p is 0 or 1, 0.5 when borderline.
+      const certainty = Math.max(parsed.probability, 1 - parsed.probability)
+      multiCertainty[entry.questionIndex] = Math.min(multiCertainty[entry.questionIndex], certainty)
     }
+  }
+
+  for (let i = 0; i < questions.length; i++) {
+    if (questions[i].multiple) confidences[i] = multiCertainty[i]
   }
 
   return { answers: result, confidences }

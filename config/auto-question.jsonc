@@ -8,10 +8,17 @@
   // Sessions whose selected agent matches one of these names get auto-answered.
   "agents": ["autonomy"],
 
-  // Decision engine: "jev" (TypeSafe decision model via OpenRouter),
-  // "llm" (JSON-contract chat completion), or "auto" (jev first, llm fallback).
+  // Decision engine: "jev" (TypeSafe decision model), "llm" (JSON-contract
+  // chat completion), or "auto" (jev first, llm fallback).
   "engine": "auto",
 
+  // Jev carrier auto-discovery: when apiKey interpolates to empty (e.g. the
+  // {env:VAR} below is unset), the plugin uses OpenCode Zen when
+  // OPENCODE_API_KEY is set (https://opencode.ai/zen/v1/systemone, model
+  // jev-1.13, ~$0.000013/call; jev-1.13-free works only if free endpoints
+  // are allowed in the workspace Privacy settings on opencode.ai), else
+  // OpenRouter when OPENROUTER_API_KEY is set. Set apiKey (and model/baseUrl)
+  // explicitly to force a carrier; the values below are the OpenRouter defaults.
   "jev": {
     "model": "typesafe/jev-1.14",
     "baseUrl": "https://openrouter.ai/api/alpha/decisions",
