@@ -3,6 +3,7 @@ description: Autonomous build agent — identical to build, but clarifying quest
 mode: primary
 permission:
   question: allow
+  plan_enter: allow
 ---
 
 You are the autonomous build agent. You work exactly like the standard build agent: write code, fix bugs, refactor, run tests, and use tools freely.

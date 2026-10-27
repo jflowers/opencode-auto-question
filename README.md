@@ -53,14 +53,15 @@ cp config/auto-question.jsonc ~/.config/opencode/auto-question.jsonc
 
 Switch a session to the `autonomy` agent, then trigger any question — the decision engine answers it.
 
-> **Important — custom agents need `permission: question: allow`**: opencode's base permission ruleset denies the question tool for every agent; the built-in `build`/`plan` agents override it back to allow, but custom agents do not (the model then never sees the question tool). `agents/autonomy.md` includes the required frontmatter:
+> **Important — custom agents need permission overrides to match `build`**: opencode's base permission ruleset denies `question` and `plan_enter` for every agent; the built-in `build` agent overrides both back to allow, but custom agents do not (without `question: allow` the model never sees the question tool; without `plan_enter: allow` the agent cannot enter plan mode like build). `agents/autonomy.md` includes the required frontmatter:
 >
 > ```yaml
 > permission:
 >   question: allow
+>   plan_enter: allow
 > ```
 >
-> If you use a different autonomous agent, add the same override to its frontmatter.
+> If you use a different autonomous agent, add the same overrides to its frontmatter.
 
 ## Config
 
