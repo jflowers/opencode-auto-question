@@ -1,0 +1,46 @@
+{
+  // opencode-auto-question plugin configuration.
+  // Copy to: ~/.config/opencode/auto-question.jsonc
+  // {env:VAR} placeholders are interpolated from the environment.
+
+  "enabled": true,
+
+  // Sessions whose selected agent matches one of these names get auto-answered.
+  "agents": ["autonomy"],
+
+  // Decision engine: "jev" (TypeSafe decision model via OpenRouter),
+  // "llm" (JSON-contract chat completion), or "auto" (jev first, llm fallback).
+  "engine": "auto",
+
+  "jev": {
+    "model": "typesafe/jev-1.14",
+    "baseUrl": "https://openrouter.ai/api/alpha/decisions",
+    "apiKey": "{env:OPENROUTER_API_KEY}",
+    "timeoutMs": 15000
+  },
+
+  "llm": {
+    "baseUrl": "https://api.enmaas.devshift.net/v1",
+    "apiKey": "{env:ENMAAS_KEY}",
+    "model": "rits/zai-org/glm-5-3",
+    "timeoutMs": 60000
+  },
+
+  // Pass 1 (no context) answers at or above this confidence immediately.
+  "confidenceThreshold": 0.6,
+
+  // After context gathering (pass 2), answers at or above this confidence are
+  // sent; below this the human answers via the normal TUI form.
+  "fallbackThreshold": 0.35,
+
+  "contextGathering": {
+    "agent": "auto-question-ctx",
+    "timeoutMs": 30000
+  },
+
+  // Hard cap for the entire auto-answer attempt per question request.
+  "handlerTimeoutMs": 120000,
+
+  // Debug logging to ~/.local/share/opencode-auto-question/log.txt
+  "verbose": false
+}

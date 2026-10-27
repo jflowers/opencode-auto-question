@@ -1,0 +1,9 @@
+{
+  // fixture for config.test.ts
+  "enabled": true,
+  "agents": ["autonomy", "custom-agent"],
+  "jev": {
+    "apiKey": "{env:AQ_TEST_KEY}"
+  },
+  "confidenceThreshold": 0.7
+}
