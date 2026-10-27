@@ -77,6 +77,22 @@ describe("resolveJevCarrier", () => {
     expect(resolveJevCarrier(base)!.carrier).toBe("zen")
   })
 
+  test("OpenRouter key in OPENCODE_API_KEY self-heals to OpenRouter", () => {
+    process.env.OPENCODE_API_KEY = "sk-or-v1-abc123"
+    const carrier = resolveJevCarrier(base)!
+    expect(carrier.carrier).toBe("openrouter")
+    expect(carrier.baseUrl).toBe("https://openrouter.ai/api/alpha/decisions")
+    expect(carrier.model).toBe("typesafe/jev-1.14")
+    expect(carrier.apiKey).toBe("sk-or-v1-abc123")
+    expect(carrier.note).toContain("OPENROUTER_API_KEY")
+  })
+
+  test("OpenRouter key in OPENCODE_API_KEY takes precedence over OPENROUTER_API_KEY", () => {
+    process.env.OPENCODE_API_KEY = "sk-or-v1-abc123"
+    process.env.OPENROUTER_API_KEY = "sk-or-v1-other"
+    expect(resolveJevCarrier(base)!.apiKey).toBe("sk-or-v1-abc123")
+  })
+
   test("no keys and empty config apiKey returns null", () => {
     expect(resolveJevCarrier(base)).toBeNull()
   })

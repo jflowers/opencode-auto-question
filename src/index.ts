@@ -81,6 +81,7 @@ const plugin: Plugin = async (input) => {
 
   setVerbose(config.verbose)
   const jevCarrier = resolveJevCarrier(config)
+  if (jevCarrier?.note) log("warn", "jev carrier note", { note: jevCarrier.note })
   log("info", "auto-question plugin loaded", {
     agents: config.agents,
     engine: config.engine,

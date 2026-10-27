@@ -15,6 +15,7 @@ export interface JevCarrier {
   baseUrl: string
   model: string
   apiKey: string
+  note?: string
 }
 
 /**
@@ -23,13 +24,27 @@ export interface JevCarrier {
  * (OPENCODE_API_KEY, jev-1.13) first, then OpenRouter
  * (OPENROUTER_API_KEY, typesafe/jev-1.14). Zen serves bare model IDs;
  * OpenRouter requires the provider-prefixed slug.
+ *
+ * Self-heal: an OpenRouter key (sk-or-...) accidentally placed in
+ * OPENCODE_API_KEY would 401 at Zen — route it to OpenRouter instead and
+ * surface a note so the mixup is visible in logs.
  */
 export function resolveJevCarrier(config: Config): JevCarrier | null {
   if (config.jev.apiKey) {
     return { carrier: "config", baseUrl: config.jev.baseUrl, model: config.jev.model, apiKey: config.jev.apiKey }
   }
-  if (process.env.OPENCODE_API_KEY) {
-    return { carrier: "zen", baseUrl: ZEN_BASE_URL, model: ZEN_MODEL, apiKey: process.env.OPENCODE_API_KEY }
+  const opencodeKey = process.env.OPENCODE_API_KEY
+  if (opencodeKey) {
+    if (opencodeKey.startsWith("sk-or-")) {
+      return {
+        carrier: "openrouter",
+        baseUrl: OPENROUTER_BASE_URL,
+        model: OPENROUTER_MODEL,
+        apiKey: opencodeKey,
+        note: "OPENCODE_API_KEY holds an OpenRouter key (sk-or-...); routing to OpenRouter. Put your Zen key in OPENCODE_API_KEY and this key in OPENROUTER_API_KEY.",
+      }
+    }
+    return { carrier: "zen", baseUrl: ZEN_BASE_URL, model: ZEN_MODEL, apiKey: opencodeKey }
   }
   if (process.env.OPENROUTER_API_KEY) {
     return { carrier: "openrouter", baseUrl: OPENROUTER_BASE_URL, model: OPENROUTER_MODEL, apiKey: process.env.OPENROUTER_API_KEY }
