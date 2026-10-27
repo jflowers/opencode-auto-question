@@ -2,6 +2,7 @@
   "name": "@jflowers/opencode-auto-question",
   "version": "0.1.0",
   "description": "opencode plugin that auto-answers the question tool when running with an autonomous agent, using Jev (TypeSafe decision model) or an LLM JSON contract, with tool-assisted context gathering.",
+  "license": "Apache-2.0",
   "type": "module",
   "exports": {
     "./server": "./src/index.ts"
