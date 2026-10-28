@@ -87,12 +87,20 @@ export async function gatherContext(
     log("warn", "context gathering failed", { error: String(e) })
     return null
   } finally {
+    // Delay the DELETE to let the server's SessionProcessor.cleanup finish
+    // persisting final message state (step-start parts, token counts, etc.).
+    // The synchronous /session/{id}/message POST returns before cleanup
+    // completes; an immediate DELETE races with that background write and
+    // causes FOREIGN KEY constraint errors.
     if (sessionID) {
-      try {
-        await httpClient.delete({ url: `/session/${sessionID}` })
-      } catch (e) {
-        log("debug", "context session cleanup failed", { sessionID, error: String(e) })
-      }
+      const id = sessionID
+      setTimeout(async () => {
+        try {
+          await httpClient.delete({ url: `/session/${id}` })
+        } catch (e) {
+          log("debug", "context session cleanup failed", { sessionID: id, error: String(e) })
+        }
+      }, 5_000)
     }
   }
 }

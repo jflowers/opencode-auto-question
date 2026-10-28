@@ -90,7 +90,8 @@ await hooks.event({
   },
 })
 
-await new Promise((resolve) => setTimeout(resolve, 1000))
+// Wait for the delayed session cleanup (DELETE fires after 5s via setTimeout).
+await new Promise((resolve) => setTimeout(resolve, 6000))
 globalThis.fetch = realFetch
 
 const reply = httpCalls.find((c) => c.url.includes("/reply"))
