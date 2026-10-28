@@ -136,7 +136,7 @@ async function decideAndReply(deps: HandlerDeps, request: QuestionRequest, versi
     const httpClient = (deps.input.client as any)._client
     immediateCtx = await getImmediateContext(httpClient, request)
     if (immediateCtx) {
-      log("debug", "fetched immediate context", { requestID: request.id, chars: immediateCtx.length })
+      log("info", "fetched immediate context", { requestID: request.id, chars: immediateCtx.length })
     }
   }
 
