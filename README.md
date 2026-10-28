@@ -53,7 +53,14 @@ cp config/auto-question.jsonc ~/.config/opencode/auto-question.jsonc
 
 Switch a session to the `autonomy` agent, then trigger any question — the decision engine answers it.
 
-> **Important — custom agents need permission overrides to match `build`**: opencode's base permission ruleset denies `question` and `plan_enter` for every agent, and sets `external_directory` to `ask`; the built-in `build` agent overrides `question` and `plan_enter` back to allow, but custom agents do not (without `question: allow` the model never sees the question tool; without `plan_enter: allow` the agent cannot enter plan mode like build; without `external_directory: allow` every cross-repo file access prompts for human approval, blocking unattended sessions). `agents/autonomy.md` includes the required frontmatter:
+> **Important — custom agents need permission overrides**: opencode's base permission ruleset denies `question` and `plan_enter` for every agent, and sets `external_directory` to `ask`. The built-in `build` agent overrides `question` and `plan_enter` back to allow but leaves `external_directory` as `ask` (humans click "Allow always"). Custom agents don't get any overrides automatically.
+>
+> Without these permissions:
+> - `question: allow` — the model never sees the question tool
+> - `plan_enter: allow` — the agent cannot enter plan mode
+> - `external_directory: allow` — every cross-repo file access blocks the session waiting for human approval
+>
+> `agents/autonomy.md` includes the required frontmatter:
 >
 > ```yaml
 > permission:
@@ -63,6 +70,51 @@ Switch a session to the `autonomy` agent, then trigger any question — the deci
 > ```
 >
 > If you use a different autonomous agent, add the same overrides to its frontmatter.
+
+### Scoping `external_directory` per project
+
+`external_directory: allow` in the agent definition grants access to **all files on the filesystem**. For tighter control, override the permission per project in `.opencode/opencode.json` (or `opencode.json` at the project root) instead of in the agent definition:
+
+```json
+{
+  "agent": {
+    "autonomy": {
+      "permission": {
+        "external_directory": {
+          "~/Projects/github/my-org/**": "allow",
+          "*": "ask"
+        }
+      }
+    }
+  }
+}
+```
+
+This auto-allows access to sibling repos under the same org while prompting for anything else. Project-level config overrides the global agent definition.
+
+**Pattern rules:**
+- `~/` and `$HOME` expand to the home directory — these are the only supported variables
+- Patterns must be absolute paths or use `~/`; relative paths (`../**`, `./**`) do not work
+- Glob syntax: `*` matches a single segment, `**` matches any depth
+- Last matching rule wins (put broad rules first, narrow rules last)
+
+**Other permissions that may block unattended sessions:**
+
+| Permission | Base default | Notes |
+|---|---|---|
+| `doom_loop` | `ask` | Prompts when the agent appears stuck in a retry loop |
+| `read` (`.env` files) | `ask` for `*.env`, `*.env.*` | Prompts when reading environment files |
+
+Add these to the agent or project config if they interrupt your autonomous workflows:
+
+```yaml
+# in agent frontmatter
+permission:
+  question: allow
+  plan_enter: allow
+  external_directory: allow
+  doom_loop: allow
+```
 
 ## Config
 
