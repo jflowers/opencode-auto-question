@@ -95,11 +95,56 @@ async function reply(deps: HandlerDeps, request: QuestionRequest, decision: Deci
   }
 }
 
+/** Max characters of immediate context to include (safety valve for huge messages). */
+const IMMEDIATE_CONTEXT_MAX_CHARS = 20_000
+
+/**
+ * Fetch the text parts of the assistant message that triggered the question
+ * tool call. This contains the model's reasoning, tables, recommendations —
+ * everything the human would see above the form in the TUI.
+ */
+async function getImmediateContext(httpClient: any, request: QuestionRequest): Promise<string | null> {
+  const messageID = request.tool?.messageID
+  if (!messageID) return null
+  try {
+    const result = await httpClient.get({ url: `/session/${request.sessionID}/message` })
+    const messages: any[] = result?.data ?? []
+    const msg = messages.find((m: any) => m?.info?.id === messageID)
+    if (!msg || !Array.isArray(msg.parts)) return null
+    const texts = msg.parts
+      .filter((p: any) => p?.type === "text" && typeof p.text === "string")
+      .map((p: any) => p.text as string)
+    let joined = texts.join("\n").trim()
+    if (!joined) return null
+    if (joined.length > IMMEDIATE_CONTEXT_MAX_CHARS) {
+      joined = joined.slice(-IMMEDIATE_CONTEXT_MAX_CHARS)
+    }
+    return joined
+  } catch (e) {
+    log("debug", "failed to fetch immediate context", { error: String(e) })
+    return null
+  }
+}
+
 async function decideAndReply(deps: HandlerDeps, request: QuestionRequest, version: "v1" | "v2"): Promise<void> {
   const { config } = deps
 
-  // Pass 1: fast decision, no context.
-  let decision = await decide(config, request.questions, null)
+  // Fetch the model's reasoning text from the same assistant message that
+  // called the question tool — tables, recommendations, detailed options, etc.
+  let immediateCtx: string | null = null
+  if (config.immediateContext) {
+    const httpClient = (deps.input.client as any)._client
+    immediateCtx = await getImmediateContext(httpClient, request)
+    if (immediateCtx) {
+      log("debug", "fetched immediate context", { requestID: request.id, chars: immediateCtx.length })
+    }
+  }
+
+  // Pass 1: decide with immediate context (model reasoning) only.
+  const pass1Context = immediateCtx
+    ? `Agent's reasoning before asking:\n${immediateCtx}`
+    : null
+  let decision = await decide(config, request.questions, pass1Context)
   logDecision("pass 1", request.id, decision)
 
   if (decision.ok && minConfidence(decision) >= config.confidenceThreshold) {
@@ -107,17 +152,23 @@ async function decideAndReply(deps: HandlerDeps, request: QuestionRequest, versi
     return
   }
 
-  // Pass 2: gather context with a subagent, re-decide. A pass-2 decision
-  // supersedes pass 1; if pass 2 errors, pass 1 is kept for thresholding.
+  // Pass 2: gather additional context with a subagent, combine with immediate
+  // context, and re-decide. A pass-2 decision supersedes pass 1; if pass 2
+  // errors, pass 1 is kept for thresholding.
   log("info", "low confidence — gathering context", {
     requestID: request.id,
     minConfidence: decision.ok ? minConfidence(decision) : null,
     threshold: config.confidenceThreshold,
   })
-  const context = await gatherContext(deps.input, config, request)
-  let pass = "pass 1 (no context)"
-  if (context) {
-    const second = await decide(config, request.questions, context)
+  const gathered = await gatherContext(deps.input, config, request)
+  let pass = "pass 1 (no gathered context)"
+  if (gathered || immediateCtx) {
+    const parts: string[] = []
+    if (immediateCtx) parts.push(`Agent's reasoning before asking:\n${immediateCtx}`)
+    if (gathered) parts.push(`Additional context from knowledge sources:\n${gathered}`)
+    const combinedContext = parts.join("\n\n")
+
+    const second = await decide(config, request.questions, combinedContext)
     if (second.ok) {
       decision = second
       pass = "pass 2"

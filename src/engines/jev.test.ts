@@ -17,6 +17,7 @@ const base: Config = {
   fallbackThreshold: 0.35,
   contextGathering: { agent: "auto-question-ctx", timeoutMs: 30000 },
   handlerTimeoutMs: 120000,
+  immediateContext: true,
   verbose: false,
 }
 

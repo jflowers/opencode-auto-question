@@ -60,6 +60,8 @@ export interface Config {
   /** After pass 2, answers at or above this confidence are sent; below goes to the human. */
   fallbackThreshold: number
   contextGathering: ContextGatheringConfig
+  /** Fetch the assistant message text (model reasoning) that triggered the question tool call. */
+  immediateContext: boolean
   /** Hard cap for the entire auto-answer attempt per question request. */
   handlerTimeoutMs: number
   verbose: boolean

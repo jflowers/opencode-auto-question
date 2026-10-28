@@ -14,7 +14,7 @@ Session agent in config "agents" list? ── NO ──▶ human answers (TUI fo
 ╔══ PASS 1: fast decision ══════════════════════╗
 ║ Jev Choice/Noul (OpenCode Zen or OpenRouter)  ║
 ║ or LLM JSON contract (chat completions)       ║
-║ state = question + options only               ║
+║ state = immediate context + question + options ║
 ╚═══════════════════════════════════════════════╝
         │
   confidence ≥ confidenceThreshold (0.6)? ── YES ──▶ reply
@@ -74,6 +74,7 @@ Switch a session to the `autonomy` agent, then trigger any question — the deci
 | `jev` | auto-discovered | Carrier: explicit `apiKey`+`baseUrl`+`model` in config, else `OPENCODE_API_KEY` → OpenCode Zen (`jev-1.13`, ~$0.000013/call), else `OPENROUTER_API_KEY` → OpenRouter (`typesafe/jev-1.14`) |
 | `confidenceThreshold` | `0.6` | Pass 1 answers at or above this immediately |
 | `fallbackThreshold` | `0.35` | After pass 2, below this goes to the human |
+| `immediateContext` | `true` | Fetch the model's reasoning text from the assistant message that called the question tool (tables, recommendations, etc.) and include as context for the decision engine |
 | `contextGathering.agent` | `"auto-question-ctx"` | Subagent that gathers context |
 | `handlerTimeoutMs` | `120000` | Hard cap per question request |
 

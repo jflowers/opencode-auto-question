@@ -48,6 +48,12 @@
   // Hard cap for the entire auto-answer attempt per question request.
   "handlerTimeoutMs": 120000,
 
+  // Fetch the model's reasoning text from the assistant message that called the
+  // question tool (tables, recommendations, detailed option descriptions) and
+  // include it as context for the decision engine. Dramatically improves
+  // accuracy for complex questions where the bare options lack context.
+  "immediateContext": true,
+
   // Debug logging to ~/.local/share/opencode-auto-question/log.txt
   "verbose": false
 }

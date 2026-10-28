@@ -31,6 +31,7 @@ export const DEFAULT_CONFIG: Config = {
     agent: "auto-question-ctx",
     timeoutMs: 30_000,
   },
+  immediateContext: true,
   handlerTimeoutMs: 120_000,
   verbose: false,
 }
@@ -150,6 +151,7 @@ export function loadConfig(path: string = defaultConfigPath()): Config {
     config.handlerTimeoutMs = DEFAULT_CONFIG.handlerTimeoutMs
   }
   if (typeof config.verbose !== "boolean") config.verbose = false
+  if (typeof config.immediateContext !== "boolean") config.immediateContext = true
 
   for (const engine of ["jev", "llm"] as const) {
     const block = config[engine]
