@@ -18,6 +18,7 @@ const base: Config = {
   contextGathering: { agent: "auto-question-ctx", timeoutMs: 30000 },
   handlerTimeoutMs: 120000,
   immediateContext: true,
+  sessionSummary: true,
   verbose: false,
 }
 

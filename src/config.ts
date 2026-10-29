@@ -32,6 +32,7 @@ export const DEFAULT_CONFIG: Config = {
     timeoutMs: 30_000,
   },
   immediateContext: true,
+  sessionSummary: true,
   handlerTimeoutMs: 120_000,
   verbose: false,
 }
@@ -152,6 +153,7 @@ export function loadConfig(path: string = defaultConfigPath()): Config {
   }
   if (typeof config.verbose !== "boolean") config.verbose = false
   if (typeof config.immediateContext !== "boolean") config.immediateContext = true
+  if (typeof config.sessionSummary !== "boolean") config.sessionSummary = true
 
   for (const engine of ["jev", "llm"] as const) {
     const block = config[engine]

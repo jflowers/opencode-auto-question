@@ -62,6 +62,8 @@ export interface Config {
   contextGathering: ContextGatheringConfig
   /** Fetch the assistant message text (model reasoning) that triggered the question tool call. */
   immediateContext: boolean
+  /** Inject a summary message into the session history after auto-answering or deferring to human. */
+  sessionSummary: boolean
   /** Hard cap for the entire auto-answer attempt per question request. */
   handlerTimeoutMs: number
   verbose: boolean

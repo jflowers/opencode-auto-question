@@ -128,6 +128,7 @@ permission:
 | `confidenceThreshold` | `0.6` | Pass 1 answers at or above this immediately |
 | `fallbackThreshold` | `0.35` | After pass 2, below this goes to the human |
 | `immediateContext` | `true` | Fetch the model's reasoning text from the assistant message that called the question tool (tables, recommendations, etc.) and include as context for the decision engine |
+| `sessionSummary` | `true` | Inject a visible summary message into the session history after auto-answering or deferring to human |
 | `contextGathering.agent` | `"auto-question-ctx"` | Subagent that gathers context |
 | `handlerTimeoutMs` | `120000` | Hard cap per question request |
 
@@ -139,6 +140,7 @@ permission:
 - Session-agent detection uses user-message events plus a session-messages fallback (the v1.19 session type has no agent field).
 - Context gathering creates a temporary child session (deleted afterwards) that inherits the project directory, so per-project tools like dewey MCP are available to the context subagent.
 - Decisions and errors are logged to `~/.local/share/opencode-auto-question/log.txt` (set `"verbose": true` for debug detail).
+- **Session summaries**: when `sessionSummary` is enabled (default), the plugin injects a visible `noReply` message into the session history after auto-answering or deferring to human. This shows the engine used, confidence scores, and which answers were selected (or why the question was deferred). Set `"sessionSummary": false` to disable.
 - If the human answers first, the plugin's reply fails harmlessly (the pending request is gone) and it moves on.
 
 ## Development

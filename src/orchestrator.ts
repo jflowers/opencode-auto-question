@@ -28,6 +28,82 @@ function minConfidence(decision: Decision): number {
   return Math.min(...decision.confidences)
 }
 
+// ---------------------------------------------------------------------------
+// Session summary injection
+// ---------------------------------------------------------------------------
+
+/** Format a single question + answer line for the summary. */
+function formatQA(q: { question: string; header: string }, answer: string[], confidence: number): string {
+  const conf = confidence.toFixed(2)
+  const ans = answer.length > 0 ? answer.join(", ") : "(unanswered)"
+  // Use header as short label, truncate long answers
+  const truncAns = ans.length > 80 ? ans.slice(0, 77) + "..." : ans
+  return `  ${q.header}: "${truncAns}" (${conf})`
+}
+
+function formatAutoAnswered(request: QuestionRequest, decision: Decision, pass: string): string {
+  const min = minConfidence(decision).toFixed(2)
+  const lines = [
+    `[auto-question] Answered by ${decision.engine} (${pass}, min confidence ${min})`,
+  ]
+  for (let i = 0; i < request.questions.length; i++) {
+    lines.push(formatQA(
+      request.questions[i],
+      decision.answers[i] ?? [],
+      decision.confidences[i] ?? 0,
+    ))
+  }
+  return lines.join("\n")
+}
+
+function formatDeferred(
+  request: QuestionRequest,
+  decision: Decision | null,
+  reason: string,
+  threshold: number,
+): string {
+  if (!decision || !decision.ok) {
+    return `[auto-question] Deferred to human — ${reason}`
+  }
+  const min = minConfidence(decision).toFixed(2)
+  const lines = [
+    `[auto-question] Deferred to human — ${decision.engine} confidence ${min} below threshold ${threshold.toFixed(2)}`,
+  ]
+  // Show the weakest answers to explain why
+  const indexed = request.questions.map((q, i) => ({
+    q,
+    answer: decision.answers[i] ?? [],
+    confidence: decision.confidences[i] ?? 0,
+    i,
+  }))
+  indexed.sort((a, b) => a.confidence - b.confidence)
+  for (const { q, answer, confidence } of indexed.slice(0, 3)) {
+    lines.push(formatQA(q, answer, confidence))
+  }
+  if (indexed.length > 3) {
+    lines.push(`  ... and ${indexed.length - 3} more`)
+  }
+  return lines.join("\n")
+}
+
+/** Inject a noReply user message into the session as a visible summary. */
+async function injectSummary(deps: HandlerDeps, sessionID: string, text: string): Promise<void> {
+  try {
+    const httpClient = (deps.input.client as any)._client
+    await httpClient.post({
+      url: `/session/${sessionID}/message`,
+      body: {
+        noReply: true,
+        parts: [{ type: "text", text }],
+      },
+    })
+    log("debug", "injected session summary", { sessionID, chars: text.length })
+  } catch (e) {
+    // Non-critical — log and move on
+    log("debug", "failed to inject session summary", { sessionID, error: String(e) })
+  }
+}
+
 async function decide(config: Config, questions: QuestionRequest["questions"], context: string | null): Promise<Decision> {
   const order = config.engine === "auto" ? (["jev", "llm"] as const) : ([config.engine] as const)
   let last: Decision | undefined
@@ -149,6 +225,9 @@ async function decideAndReply(deps: HandlerDeps, request: QuestionRequest, versi
 
   if (decision.ok && minConfidence(decision) >= config.confidenceThreshold) {
     await reply(deps, request, decision, version, "pass 1")
+    if (config.sessionSummary) {
+      await injectSummary(deps, request.sessionID, formatAutoAnswered(request, decision, "pass 1"))
+    }
     return
   }
 
@@ -178,6 +257,9 @@ async function decideAndReply(deps: HandlerDeps, request: QuestionRequest, versi
 
   if (decision.ok && minConfidence(decision) >= config.fallbackThreshold) {
     await reply(deps, request, decision, version, pass)
+    if (config.sessionSummary) {
+      await injectSummary(deps, request.sessionID, formatAutoAnswered(request, decision, pass))
+    }
     return
   }
 
@@ -186,6 +268,14 @@ async function decideAndReply(deps: HandlerDeps, request: QuestionRequest, versi
     minConfidence: decision.ok ? minConfidence(decision) : null,
     threshold: config.fallbackThreshold,
   })
+  if (config.sessionSummary) {
+    await injectSummary(deps, request.sessionID, formatDeferred(
+      request,
+      decision,
+      decision.ok ? "low confidence" : (decision.error ?? "decision failed"),
+      config.fallbackThreshold,
+    ))
+  }
 }
 
 /** Entry point for question.asked / question.v2.asked events. Fire-and-forget. */
@@ -213,5 +303,9 @@ export async function handleQuestionAsked(
   const outcome = await withTimeout(decideAndReply(deps, request, version), config.handlerTimeoutMs)
   if (outcome === "timeout") {
     log("warn", "handler timed out — leaving for human", { requestID: request.id })
+    if (config.sessionSummary) {
+      await injectSummary(deps, request.sessionID,
+        `[auto-question] Deferred to human — handler timed out (${Math.round(config.handlerTimeoutMs / 1000)}s)`)
+    }
   }
 }

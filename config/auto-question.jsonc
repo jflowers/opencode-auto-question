@@ -54,6 +54,10 @@
   // accuracy for complex questions where the bare options lack context.
   "immediateContext": true,
 
+  // Inject a summary message into the session history after auto-answering or
+  // deferring to human (visible in the conversation as a noReply user message).
+  "sessionSummary": true,
+
   // Debug logging to ~/.local/share/opencode-auto-question/log.txt
   "verbose": false
 }
