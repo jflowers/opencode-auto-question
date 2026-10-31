@@ -90,18 +90,60 @@ function formatDeferred(
   return lines.join("\n")
 }
 
+/** User-message info fields (from GET /session/{id}/message) the summary must preserve. */
+export interface SummaryTargetInfo {
+  agent?: unknown
+  model?: { providerID?: unknown; modelID?: unknown; variant?: unknown }
+  system?: unknown
+  format?: unknown
+}
+
+/**
+ * Build the POST /session/{id}/message body for a session summary, carrying
+ * the latest user message's agent/model/variant/system/format. opencode
+ * re-reads the latest user message on every prompt-loop iteration and stamps
+ * the session's current agent/model from it, so an agent-less summary message
+ * would switch the session to the default agent ("build") mid-run. Returns
+ * null when the info is unusable — the caller must then skip injection rather
+ * than risk switching agents.
+ */
+export function buildSummaryBody(info: SummaryTargetInfo | null, text: string): Record<string, unknown> | null {
+  if (!info) return null
+  const agent = typeof info.agent === "string" ? info.agent : ""
+  const providerID = typeof info.model?.providerID === "string" ? info.model.providerID : ""
+  const modelID = typeof info.model?.modelID === "string" ? info.model.modelID : ""
+  if (!agent || !providerID || !modelID) return null
+  const body: Record<string, unknown> = {
+    noReply: true,
+    agent,
+    model: { providerID, modelID },
+    // ignored: shown in the TUI/history but excluded from model context
+    parts: [{ type: "text", text, ignored: true }],
+  }
+  if (typeof info.model?.variant === "string") body.variant = info.model.variant
+  if (typeof info.system === "string") body.system = info.system
+  if (info.format) body.format = info.format
+  return body
+}
+
 /** Inject a noReply user message into the session as a visible summary. */
 async function injectSummary(deps: HandlerDeps, sessionID: string, text: string): Promise<void> {
   try {
     const httpClient = (deps.input.client as any)._client
+    const result = await httpClient.get({ url: `/session/${sessionID}/message` })
+    const messages: any[] = result?.data ?? []
+    const lastUserInfo: SummaryTargetInfo | null =
+      messages.findLast((m: any) => m?.info?.role === "user")?.info ?? null
+    const body = buildSummaryBody(lastUserInfo, text)
+    if (!body) {
+      log("debug", "skipped session summary — no user message with agent/model to preserve", { sessionID })
+      return
+    }
     await httpClient.post({
       url: `/session/${sessionID}/message`,
-      body: {
-        noReply: true,
-        parts: [{ type: "text", text }],
-      },
+      body,
     })
-    log("debug", "injected session summary", { sessionID, chars: text.length })
+    log("debug", "injected session summary", { sessionID, chars: text.length, agent: String(body.agent) })
   } catch (e) {
     // Non-critical — log and move on
     log("debug", "failed to inject session summary", { sessionID, error: String(e) })

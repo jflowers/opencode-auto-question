@@ -81,7 +81,8 @@
   "immediateContext": true,
 
   // Inject a summary message into the session history after auto-answering or
-  // deferring to human (visible in the conversation as a noReply user message).
+  // deferring to human. Visible in the TUI but hidden from the model; carries
+  // the session's current agent/model so it never switches agents mid-run.
   "sessionSummary": true,
 
   // Debug logging to ~/.local/share/opencode-auto-question/log.txt

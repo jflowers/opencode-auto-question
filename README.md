@@ -174,7 +174,7 @@ When no guidance documents exist anywhere, pass 0 is skipped entirely and behavi
 | `confidenceThreshold` | `0.6` | Pass 1 answers at or above this immediately |
 | `fallbackThreshold` | `0.35` | After pass 2, below this goes to the human |
 | `immediateContext` | `true` | Fetch the model's reasoning text from the assistant message that called the question tool (tables, recommendations, etc.) and include as context for the decision engine |
-| `sessionSummary` | `true` | Inject a visible summary message into the session history after auto-answering or deferring to human |
+| `sessionSummary` | `true` | Inject a summary message into the session history after auto-answering or deferring to human (visible in the TUI, hidden from the model, keeps the session's agent/model) |
 | `contextGathering.agent` | `"auto-question-ctx"` | Subagent that gathers context |
 | `agentDecision.agent` | `"auto-question-decide"` | Pass-0 decision subagent that answers following project guidance |
 | `agentDecision.timeoutMs` | `60000` | Timeout for the pass-0 decision agent |
@@ -193,7 +193,7 @@ When no guidance documents exist anywhere, pass 0 is skipped entirely and behavi
 - Context gathering creates a temporary child session (deleted afterwards) that inherits the project directory, so per-project tools like dewey MCP are available to the context subagent.
 - The pass-0 decision agent runs in the same kind of temporary child session; the project directory is resolved from the opencode launch directory (`input.directory`), so guidance is read from the project opencode was started in.
 - Decisions and errors are logged to `~/.local/share/opencode-auto-question/log.txt` (set `"verbose": true` for debug detail).
-- **Session summaries**: when `sessionSummary` is enabled (default), the plugin injects a visible `noReply` message into the session history after auto-answering or deferring to human. This shows the engine used, confidence scores, and which answers were selected (or why the question was deferred). Set `"sessionSummary": false` to disable.
+- **Session summaries**: when `sessionSummary` is enabled (default), the plugin injects a visible `noReply` message into the session history after auto-answering or deferring to human. This shows the engine used, confidence scores, and which answers were selected (or why the question was deferred). The message carries the latest user message's agent/model/variant/system/format — without those, opencode stamps a new user message with the default agent and switches the session to `build` mid-run — and its text part is marked `ignored`, so it shows in the history but stays out of the model's context. Set `"sessionSummary": false` to disable.
 - If the human answers first, the plugin's reply fails harmlessly (the pending request is gone) and it moves on.
 
 ## Development

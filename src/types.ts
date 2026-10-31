@@ -81,7 +81,7 @@ export interface Config {
   guidance: GuidanceConfig
   /** Fetch the assistant message text (model reasoning) that triggered the question tool call. */
   immediateContext: boolean
-  /** Inject a summary message into the session history after auto-answering or deferring to human. */
+  /** Inject a summary message into the session history after auto-answering or deferring to human (hidden from the model, keeps the session's agent). */
   sessionSummary: boolean
   /** Hard cap for the entire auto-answer attempt per question request. */
   handlerTimeoutMs: number
