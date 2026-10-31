@@ -16,6 +16,13 @@ const base: Config = {
   confidenceThreshold: 0.6,
   fallbackThreshold: 0.35,
   contextGathering: { agent: "auto-question-ctx", timeoutMs: 30000 },
+  agentDecision: { agent: "auto-question-decide", timeoutMs: 60000 },
+  guidance: {
+    enabled: true,
+    projectPath: ".opencode/auto-question/guidance",
+    globalPath: "~/.config/opencode/auto-question/guidance",
+    maxChars: 20000,
+  },
   handlerTimeoutMs: 120000,
   immediateContext: true,
   sessionSummary: true,

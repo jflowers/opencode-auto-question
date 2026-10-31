@@ -1,0 +1,12 @@
+{
+  // fixture: guidance + agentDecision overrides (some invalid, to test resets)
+  "agentDecision": {
+    "agent": "custom-decider",
+    "timeoutMs": 10
+  },
+  "guidance": {
+    "enabled": false,
+    "projectPath": "docs/questions",
+    "maxChars": 5
+  }
+}

@@ -31,6 +31,16 @@ export const DEFAULT_CONFIG: Config = {
     agent: "auto-question-ctx",
     timeoutMs: 30_000,
   },
+  agentDecision: {
+    agent: "auto-question-decide",
+    timeoutMs: 60_000,
+  },
+  guidance: {
+    enabled: true,
+    projectPath: ".opencode/auto-question/guidance",
+    globalPath: "~/.config/opencode/auto-question/guidance",
+    maxChars: 20_000,
+  },
   immediateContext: true,
   sessionSummary: true,
   handlerTimeoutMs: 120_000,
@@ -175,6 +185,26 @@ export function loadConfig(path: string = defaultConfigPath()): Config {
   }
   if (typeof cg.timeoutMs !== "number" || cg.timeoutMs < 1000) {
     cg.timeoutMs = DEFAULT_CONFIG.contextGathering.timeoutMs
+  }
+
+  const ad = config.agentDecision
+  if (typeof ad.agent !== "string" || ad.agent.length === 0) {
+    throw new ConfigError("agentDecision.agent must be a non-empty string")
+  }
+  if (typeof ad.timeoutMs !== "number" || ad.timeoutMs < 1000) {
+    ad.timeoutMs = DEFAULT_CONFIG.agentDecision.timeoutMs
+  }
+
+  const g = config.guidance
+  if (typeof g.enabled !== "boolean") g.enabled = true
+  if (typeof g.projectPath !== "string" || g.projectPath.length === 0) {
+    g.projectPath = DEFAULT_CONFIG.guidance.projectPath
+  }
+  if (typeof g.globalPath !== "string" || g.globalPath.length === 0) {
+    g.globalPath = DEFAULT_CONFIG.guidance.globalPath
+  }
+  if (typeof g.maxChars !== "number" || g.maxChars < 1000) {
+    g.maxChars = DEFAULT_CONFIG.guidance.maxChars
   }
 
   return config

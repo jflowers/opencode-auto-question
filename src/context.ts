@@ -1,5 +1,6 @@
 import type { Config, QuestionRequest } from "./types"
 import type { Plugin } from "@opencode-ai/plugin"
+import { runSubagent } from "./subagent"
 import { log } from "./log"
 
 type PluginInput = Parameters<Plugin>[0]
@@ -23,84 +24,26 @@ function buildContextPrompt(request: QuestionRequest): string {
   ].join("\n")
 }
 
-function withTimeout<T>(work: Promise<T>, ms: number): Promise<T | null> {
-  let timer: ReturnType<typeof setTimeout> | undefined
-  const timeout = new Promise<null>((resolve) => {
-    timer = setTimeout(() => resolve(null), ms)
-  })
-  return Promise.race([work, timeout]).finally(() => clearTimeout(timer))
-}
-
 /**
  * Gather decision context by prompting a dedicated subagent in a temporary
- * child session. The child session inherits the current project directory,
- * so per-project tools (dewey MCP, session-search, ...) are available. The
- * synchronous /session/{id}/message endpoint runs the full agent loop.
+ * child session (see runSubagent).
  */
 export async function gatherContext(
   input: PluginInput,
   config: Config,
   request: QuestionRequest,
 ): Promise<string | null> {
-  const httpClient = (input.client as any)._client
-  let sessionID: string | undefined
-
-  try {
-    const created = await httpClient.post({
-      url: "/session",
-      body: { parentID: request.sessionID, title: "auto-question: context gathering" },
-    })
-    sessionID = created?.data?.id
-    if (!sessionID) {
-      log("warn", "context session creation returned no id")
-      return null
-    }
-
-    const result: any = await withTimeout(
-      httpClient.post({
-        url: `/session/${sessionID}/message`,
-        body: {
-          agent: config.contextGathering.agent,
-          tools: { question: false },
-          parts: [{ type: "text", text: buildContextPrompt(request) }],
-        },
-      }),
-      config.contextGathering.timeoutMs,
-    )
-    if (!result) {
-      log("warn", "context gathering timed out", { sessionID, timeoutMs: config.contextGathering.timeoutMs })
-      return null
-    }
-
-    const parts: Array<{ type?: string; text?: string }> = result?.data?.parts ?? []
-    const text = parts
-      .filter((p) => p.type === "text" && typeof p.text === "string")
-      .map((p) => p.text)
-      .join("\n\n")
-      .trim()
-    if (!text || text === "No relevant context found.") {
-      log("info", "context gathering found nothing", { sessionID })
-      return null
-    }
-    return text
-  } catch (e) {
-    log("warn", "context gathering failed", { error: String(e) })
+  const text = await runSubagent(input, {
+    parentSessionID: request.sessionID,
+    agent: config.contextGathering.agent,
+    prompt: buildContextPrompt(request),
+    timeoutMs: config.contextGathering.timeoutMs,
+    title: "auto-question: context gathering",
+  })
+  if (!text) return null
+  if (text === "No relevant context found.") {
+    log("info", "context gathering found nothing", { requestID: request.id })
     return null
-  } finally {
-    // Delay the DELETE to let the server's SessionProcessor.cleanup finish
-    // persisting final message state (step-start parts, token counts, etc.).
-    // The synchronous /session/{id}/message POST returns before cleanup
-    // completes; an immediate DELETE races with that background write and
-    // causes FOREIGN KEY constraint errors.
-    if (sessionID) {
-      const id = sessionID
-      setTimeout(async () => {
-        try {
-          await httpClient.delete({ url: `/session/${id}` })
-        } catch (e) {
-          log("debug", "context session cleanup failed", { sessionID: id, error: String(e) })
-        }
-      }, 5_000)
-    }
   }
+  return text
 }

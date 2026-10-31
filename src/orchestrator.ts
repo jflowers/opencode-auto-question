@@ -2,6 +2,8 @@ import type { Config, Decision, QuestionRequest } from "./types"
 import type { Plugin } from "@opencode-ai/plugin"
 import { AgentTracker, isAutonomousAgent } from "./detect"
 import { gatherContext } from "./context"
+import { loadGuidance } from "./guidance"
+import { decideWithAgent } from "./engines/agent"
 import { decideWithJev, resolveJevCarrier } from "./engines/jev"
 import { decideWithLlm } from "./engines/llm"
 import { log } from "./log"
@@ -13,6 +15,8 @@ export interface HandlerDeps {
   config: Config
   tracker: AgentTracker
   settled: Set<string>
+  /** Project root (opencode launch directory) for loading .opencode guidance. */
+  projectDir: string
 }
 
 function withTimeout<T>(work: Promise<T>, ms: number): Promise<T | "timeout"> {
@@ -67,7 +71,7 @@ function formatDeferred(
   }
   const min = minConfidence(decision).toFixed(2)
   const lines = [
-    `[auto-question] Deferred to human — ${decision.engine} confidence ${min} below threshold ${threshold.toFixed(2)}`,
+    `[auto-question] Deferred to human — ${reason} (${decision.engine} confidence ${min} below threshold ${threshold.toFixed(2)})`,
   ]
   // Show the weakest answers to explain why
   const indexed = request.questions.map((q, i) => ({
@@ -214,6 +218,47 @@ async function decideAndReply(deps: HandlerDeps, request: QuestionRequest, versi
     if (immediateCtx) {
       log("info", "fetched immediate context", { requestID: request.id, chars: immediateCtx.length })
     }
+  }
+
+  // Pass 0 (project guidance): when guidance documents exist, a tool-using
+  // decision agent investigates the workspace and answers following that
+  // guidance BEFORE the generic engines run. It can produce custom
+  // ("Type your own answer") replies. Falls through to the normal two-pass
+  // flow when the agent fails or the guidance does not cover the question.
+  const guidance = loadGuidance(deps.projectDir, config)
+  if (guidance) {
+    const agentDecision = await decideWithAgent(deps.input, config, request, immediateCtx, guidance)
+    logDecision("pass 0 (guidance agent)", request.id, agentDecision)
+
+    if (agentDecision.ok && minConfidence(agentDecision) >= config.confidenceThreshold) {
+      await reply(deps, request, agentDecision, version, "pass 0")
+      if (config.sessionSummary) {
+        await injectSummary(deps, request.sessionID, formatAutoAnswered(request, agentDecision, "pass 0"))
+      }
+      return
+    }
+
+    if (agentDecision.ok && agentDecision.guidanceCovered) {
+      // The guidance addressed the question but the agent was not confident.
+      // Do not let the generic engines override project policy — defer to the
+      // human instead of falling through.
+      log("info", "guidance covered but low confidence — leaving for human", {
+        requestID: request.id,
+        minConfidence: minConfidence(agentDecision),
+        threshold: config.confidenceThreshold,
+      })
+      if (config.sessionSummary) {
+        await injectSummary(deps, request.sessionID, formatDeferred(
+          request,
+          agentDecision,
+          "project guidance covered the question but the decision agent was not confident",
+          config.confidenceThreshold,
+        ))
+      }
+      return
+    }
+
+    // Not covered, or the agent failed — fall through to the normal flow.
   }
 
   // Pass 1: decide with immediate context (model reasoning) only.

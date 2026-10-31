@@ -1,7 +1,7 @@
 import type { QuestionInfo } from "./types"
 
 /**
- * Mapping between question-tool payloads and the two decision engines.
+ * Mapping between question-tool payloads and the decision engines.
  *
  * Jev Decisions API primitives:
  *   choice — "which option?" → { type: "choice", instructions, criteria: {label: description} }
@@ -126,6 +126,17 @@ export function parseJevResponse(
   return { answers: result, confidences }
 }
 
+function formatQuestions(questions: QuestionInfo[]): string {
+  const lines: string[] = []
+  questions.forEach((q, i) => {
+    lines.push(`${i + 1}. ${q.question}`)
+    const opts = q.options.map((o) => `   - "${o.label}": ${o.description ?? ""}`).join("\n")
+    if (opts) lines.push(opts)
+    lines.push(`   (select ${q.multiple ? "all that apply" : "one"}${q.custom === false ? "" : "; custom answer allowed"})`)
+  })
+  return lines.join("\n")
+}
+
 export function buildLlmMessages(
   questions: QuestionInfo[],
   context: string | null,
@@ -150,20 +161,41 @@ export function buildLlmMessages(
     lines.push("")
   }
   lines.push("Questions from the coding agent:")
-  questions.forEach((q, i) => {
-    lines.push(`${i + 1}. ${q.question}`)
-    const opts = q.options.map((o) => `   - "${o.label}": ${o.description ?? ""}`).join("\n")
-    if (opts) lines.push(opts)
-    lines.push(`   (select ${q.multiple ? "all that apply" : "one"}${q.custom === false ? "" : "; custom answer allowed"})`)
-  })
+  lines.push(formatQuestions(questions))
 
   return { system, user: lines.join("\n") }
 }
 
-export function parseLlmResponse(
-  text: string,
-  questionCount: number,
-): { answers: string[][]; confidences: number[] } | null {
+/**
+ * Prompt for the pass-0 decision agent (its system prompt lives in the
+ * agents/auto-question-decide.md definition; this is the task message).
+ */
+export function buildAgentPrompt(
+  questions: QuestionInfo[],
+  guidance: string,
+  context: string | null,
+): string {
+  const lines: string[] = []
+  lines.push("Project guidance for answering these questions (follow it exactly; it overrides your general judgment):")
+  lines.push(guidance)
+  lines.push("")
+  if (context) {
+    lines.push("The coding agent's reasoning before asking:")
+    lines.push(context)
+    lines.push("")
+  }
+  lines.push("Questions from the coding agent:")
+  lines.push(formatQuestions(questions))
+  lines.push("")
+  lines.push("Investigate the workspace with your tools as the guidance instructs, then decide the answers the user would give.")
+  lines.push('Respond with ONLY a JSON object (no markdown fences, no prose): {"answers": [["selected label", ...], ...], "confidences": [0.0, ...], "covered": true}')
+  lines.push("- answers: one array per question, in order, holding the selected option label(s) or a single custom answer string.")
+  lines.push("- confidences: one number per question, in order. Be honest: use low confidence when you are guessing.")
+  lines.push("- covered: true when the project guidance addresses these questions, false when it does not.")
+  return lines.join("\n")
+}
+
+function extractJsonPayload(text: string): Record<string, unknown> | null {
   let payload: unknown
   try {
     payload = JSON.parse(text)
@@ -178,8 +210,14 @@ export function parseLlmResponse(
       return null
     }
   }
+  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) return null
+  return payload as Record<string, unknown>
+}
 
-  const p = payload as { answers?: unknown; confidences?: unknown }
+function parseAnswersConfidences(
+  p: Record<string, unknown>,
+  questionCount: number,
+): { answers: string[][]; confidences: number[] } | null {
   if (!Array.isArray(p.answers) || p.answers.length !== questionCount) return null
   const answers: string[][] = []
   for (const entry of p.answers) {
@@ -199,4 +237,25 @@ export function parseLlmResponse(
   }
 
   return { answers, confidences }
+}
+
+export function parseLlmResponse(
+  text: string,
+  questionCount: number,
+): { answers: string[][]; confidences: number[] } | null {
+  const p = extractJsonPayload(text)
+  if (!p) return null
+  return parseAnswersConfidences(p, questionCount)
+}
+
+/** Like parseLlmResponse, plus the agent engine's "covered" flag. */
+export function parseAgentResponse(
+  text: string,
+  questionCount: number,
+): { answers: string[][]; confidences: number[]; covered: boolean } | null {
+  const p = extractJsonPayload(text)
+  if (!p) return null
+  const parsed = parseAnswersConfidences(p, questionCount)
+  if (!parsed) return null
+  return { ...parsed, covered: p.covered === true }
 }

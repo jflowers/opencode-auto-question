@@ -95,6 +95,7 @@ const plugin: Plugin = async (input) => {
     config,
     tracker: new AgentTracker(),
     settled: new Set<string>(),
+    projectDir: typeof input.directory === "string" ? input.directory : process.cwd(),
   }
   const inflight = new Set<string>()
 

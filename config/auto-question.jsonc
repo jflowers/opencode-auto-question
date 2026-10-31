@@ -45,6 +45,32 @@
     "timeoutMs": 30000
   },
 
+  // Pass 0 — project guidance decision agent. When guidance documents exist
+  // (see "guidance" below), a tool-using subagent investigates the workspace
+  // and answers following that guidance BEFORE the jev/llm engines run. It can
+  // produce "Type your own answer" custom replies. Falls back to the normal
+  // two-pass flow when the agent fails or the guidance does not cover the
+  // question; when guidance covers the question but confidence is low, the
+  // question goes to the human (never a generic engine override).
+  "agentDecision": {
+    "agent": "auto-question-decide",
+    "timeoutMs": 60000
+  },
+
+  // Guidance documents: plain markdown, concatenated in filename order.
+  //   project: <project>/.opencode/auto-question/guidance/*.md
+  //   global:  ~/.config/opencode/auto-question/guidance/*.md
+  // Global docs load first; project docs are appended after (more specific).
+  // Set enabled: false to always use the plain jev/llm engines.
+  // Note: with guidance in play, consider raising handlerTimeoutMs (worst
+  // case: 60s agent + two engine passes can exceed the 120s default).
+  "guidance": {
+    "enabled": true,
+    "projectPath": ".opencode/auto-question/guidance",
+    "globalPath": "~/.config/opencode/auto-question/guidance",
+    "maxChars": 20000
+  },
+
   // Hard cap for the entire auto-answer attempt per question request.
   "handlerTimeoutMs": 120000,
 

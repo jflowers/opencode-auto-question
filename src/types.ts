@@ -26,7 +26,7 @@ export interface QuestionRequest {
   tool?: { messageID?: string; callID?: string }
 }
 
-export type EngineName = "jev" | "llm"
+export type EngineName = "jev" | "llm" | "agent"
 
 export interface JevConfig {
   model: string
@@ -48,6 +48,22 @@ export interface ContextGatheringConfig {
   timeoutMs: number
 }
 
+export interface AgentDecisionConfig {
+  /** Hidden subagent that investigates + decides following project guidance. */
+  agent: string
+  timeoutMs: number
+}
+
+export interface GuidanceConfig {
+  enabled: boolean
+  /** Guidance dir relative to the project root (or absolute). */
+  projectPath: string
+  /** Global guidance dir; ~ expands to the home directory. */
+  globalPath: string
+  /** Total guidance characters passed to the decision agent. */
+  maxChars: number
+}
+
 export interface Config {
   enabled: boolean
   /** Session agent names that trigger auto-answering. */
@@ -60,6 +76,9 @@ export interface Config {
   /** After pass 2, answers at or above this confidence are sent; below goes to the human. */
   fallbackThreshold: number
   contextGathering: ContextGatheringConfig
+  /** Pass 0: tool-using decision agent that runs first when guidance exists. */
+  agentDecision: AgentDecisionConfig
+  guidance: GuidanceConfig
   /** Fetch the assistant message text (model reasoning) that triggered the question tool call. */
   immediateContext: boolean
   /** Inject a summary message into the session history after auto-answering or deferring to human. */
@@ -76,5 +95,7 @@ export interface Decision {
   /** One confidence in [0,1] per question. */
   confidences: number[]
   engine: EngineName
+  /** Agent engine only: true when project guidance addressed the questions. */
+  guidanceCovered?: boolean
   error?: string
 }

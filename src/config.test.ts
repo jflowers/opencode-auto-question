@@ -70,4 +70,26 @@ describe("loadConfig", () => {
     expect(config.confidenceThreshold).toBe(1)
     expect(config.fallbackThreshold).toBe(0)
   })
+
+  test("defaults include agentDecision and guidance blocks", () => {
+    expect(DEFAULT_CONFIG.agentDecision).toEqual({ agent: "auto-question-decide", timeoutMs: 60_000 })
+    expect(DEFAULT_CONFIG.guidance).toEqual({
+      enabled: true,
+      projectPath: ".opencode/auto-question/guidance",
+      globalPath: "~/.config/opencode/auto-question/guidance",
+      maxChars: 20_000,
+    })
+  })
+
+  test("guidance overrides merge and invalid values reset to defaults", () => {
+    const path = `${import.meta.dir}/fixtures/guidance-config.jsonc`
+    const config = loadConfig(path)
+    expect(config.guidance.enabled).toBe(false)
+    expect(config.guidance.projectPath).toBe("docs/questions")
+    expect(config.agentDecision.agent).toBe("custom-decider")
+    // timeoutMs below floor resets to the default
+    expect(config.agentDecision.timeoutMs).toBe(DEFAULT_CONFIG.agentDecision.timeoutMs)
+    // maxChars below floor resets to the default
+    expect(config.guidance.maxChars).toBe(DEFAULT_CONFIG.guidance.maxChars)
+  })
 })

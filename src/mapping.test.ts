@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { buildJevQuestions, buildLlmMessages, parseJevResponse, parseLlmResponse } from "./mapping"
+import { buildAgentPrompt, buildJevQuestions, buildLlmMessages, parseAgentResponse, parseJevResponse, parseLlmResponse } from "./mapping"
 import type { QuestionInfo } from "./types"
 
 const single: QuestionInfo = {
@@ -204,5 +204,55 @@ describe("parseLlmResponse", () => {
   test("clamps confidences", () => {
     const parsed = parseLlmResponse('{"answers": [["x"]], "confidences": [7]}', 1)
     expect(parsed!.confidences[0]).toBe(1)
+  })
+})
+
+describe("buildAgentPrompt", () => {
+  test("includes guidance, context, questions, and contract", () => {
+    const prompt = buildAgentPrompt([single], "Always prefer sqlite.", "the agent reasoned about DBs")
+    expect(prompt).toContain("Project guidance")
+    expect(prompt).toContain("Always prefer sqlite.")
+    expect(prompt).toContain("the agent reasoned about DBs")
+    expect(prompt).toContain("Which database?")
+    expect(prompt).toContain('"postgres"')
+    expect(prompt).toContain('"covered"')
+    expect(prompt.indexOf("Project guidance")).toBeLessThan(prompt.indexOf("Questions from the coding agent"))
+  })
+
+  test("omits context section when no immediate context", () => {
+    const prompt = buildAgentPrompt([single], "Guidance text.", null)
+    expect(prompt).not.toContain("The coding agent's reasoning before asking")
+  })
+})
+
+describe("parseAgentResponse", () => {
+  test("parses clean JSON with covered true", () => {
+    const parsed = parseAgentResponse('{"answers": [["sqlite"]], "confidences": [0.9], "covered": true}', 1)
+    expect(parsed).toEqual({ answers: [["sqlite"]], confidences: [0.9], covered: true })
+  })
+
+  test("covered defaults to false when absent", () => {
+    const parsed = parseAgentResponse('{"answers": [["sqlite"]], "confidences": [0.4]}', 1)
+    expect(parsed!.covered).toBe(false)
+  })
+
+  test("parses fenced JSON with custom answer", () => {
+    const text = '```json\n{"answers": [["please create a chore PR"]], "confidences": [0.85], "covered": true}\n```'
+    const parsed = parseAgentResponse(text, 1)
+    expect(parsed!.answers[0]).toEqual(["please create a chore PR"])
+    expect(parsed!.covered).toBe(true)
+  })
+
+  test("non-boolean covered is false", () => {
+    const parsed = parseAgentResponse('{"answers": [["x"]], "confidences": [0.5], "covered": "yes"}', 1)
+    expect(parsed!.covered).toBe(false)
+  })
+
+  test("wrong count returns null", () => {
+    expect(parseAgentResponse('{"answers": [["x"]], "confidences": [0.5], "covered": true}', 2)).toBeNull()
+  })
+
+  test("garbage returns null", () => {
+    expect(parseAgentResponse("I will investigate the repo now.", 1)).toBeNull()
   })
 })

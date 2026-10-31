@@ -11,6 +11,23 @@ question.asked event
 Session agent in config "agents" list? ── NO ──▶ human answers (TUI form)
         │ YES
         ▼
+╔══ PASS 0: project guidance decision ═════════╗
+║ Only when guidance docs exist:               ║
+║ temp child session with a tool-using decision║
+║ subagent (git, dewey, file reads, ...)       ║
+║ investigates per .opencode/.../guidance/*.md ║
+║ → can answer "Type your own answer" text     ║
+╚══════════════════════════════════════════════╝
+        │
+  guidance agent ran? ── NO ──▶ pass 1
+        │ YES
+        ▼
+  confidence ≥ confidenceThreshold (0.6)? ── YES ──▶ reply
+        │ NO
+        ▼
+  guidance covered the question? ── YES ──▶ human answers (no generic
+        │ NO                                    engine override)
+        ▼
 ╔══ PASS 1: fast decision ══════════════════════╗
 ║ Jev Choice/Noul (OpenCode Zen or OpenRouter)  ║
 ║ or LLM JSON contract (chat completions)       ║
@@ -41,6 +58,7 @@ Every failure mode (API errors, timeouts, unparsable responses, config problems)
 mkdir -p ~/.config/opencode/agents
 ln -s "$PWD/agents/autonomy.md" ~/.config/opencode/agents/autonomy.md
 ln -s "$PWD/agents/auto-question-ctx.md" ~/.config/opencode/agents/auto-question-ctx.md
+ln -s "$PWD/agents/auto-question-decide.md" ~/.config/opencode/agents/auto-question-decide.md
 
 # 2. Copy config (edit to taste)
 cp config/auto-question.jsonc ~/.config/opencode/auto-question.jsonc
@@ -116,6 +134,34 @@ permission:
   doom_loop: allow
 ```
 
+## Project guidance (pass 0)
+
+Drop markdown files into `.opencode/auto-question/guidance/` in a project (and/or `~/.config/opencode/auto-question/guidance/` globally — global docs load first, project docs after) to steer how questions from autonomous agents are answered. When guidance exists, a tool-using decision agent runs **before** the Jev/LLM engines: it investigates the workspace with real tools (git, file reads, dewey MCP, session search) following your guidance, then answers — including "Type your own answer" custom replies, which Jev alone can never produce.
+
+Example — `.opencode/auto-question/guidance/uncommitted-files.md`:
+
+```markdown
+# Uncommitted files before new work
+
+When the agent asks what to do about uncommitted files before starting
+something new, investigate with `git status` whether those files are dewey
+learnings. If they are dewey learnings, answer with the custom text:
+"please create a chore PR for the dewey learnings and then continue"
+If they are not dewey learnings, the guidance does not apply — report
+covered: false and answer honestly at low confidence.
+```
+
+Semantics:
+
+- **Confident + covered** → the agent's answer is sent immediately (summary shows `pass 0`).
+- **Covered but low confidence** → the question goes to the human. The generic engines never override project policy.
+- **Not covered** (guidance doesn't address the question) → falls through to the normal pass 1/pass 2 flow.
+- **Agent failure/timeout** → falls through to the normal flow. Guidance loading itself can never break the plugin.
+- Guidance is re-read on every question, so edits go live without restarting opencode. Docs are concatenated in filename order and capped at `guidance.maxChars`.
+- Write both branches (what to do when the guidance applies, and what to do when it doesn't) — an unfinished "else" tends to produce low-confidence deferrals.
+
+When no guidance documents exist anywhere, pass 0 is skipped entirely and behavior is unchanged.
+
 ## Config
 
 `~/.config/opencode/auto-question.jsonc` (JSONC with `{env:VAR}` interpolation). See [config/auto-question.jsonc](config/auto-question.jsonc) for all options:
@@ -130,6 +176,12 @@ permission:
 | `immediateContext` | `true` | Fetch the model's reasoning text from the assistant message that called the question tool (tables, recommendations, etc.) and include as context for the decision engine |
 | `sessionSummary` | `true` | Inject a visible summary message into the session history after auto-answering or deferring to human |
 | `contextGathering.agent` | `"auto-question-ctx"` | Subagent that gathers context |
+| `agentDecision.agent` | `"auto-question-decide"` | Pass-0 decision subagent that answers following project guidance |
+| `agentDecision.timeoutMs` | `60000` | Timeout for the pass-0 decision agent |
+| `guidance.enabled` | `true` | Set `false` to disable pass 0 entirely |
+| `guidance.projectPath` | `".opencode/auto-question/guidance"` | Project guidance dir (relative to project root or absolute) |
+| `guidance.globalPath` | `"~/.config/opencode/auto-question/guidance"` | Global guidance dir |
+| `guidance.maxChars` | `20000` | Total guidance characters passed to the decision agent |
 | `handlerTimeoutMs` | `120000` | Hard cap per question request |
 
 ## Notes
@@ -139,6 +191,7 @@ permission:
 - **Noul semantics**: Jev multi-select (`noul`) answers are probabilities in `[0,1]`, not booleans. An option is selected when `noul > 0.5` (exactly 0.5 is maximal uncertainty and selects nothing); question confidence is the weakest option certainty (`min over options of max(p, 1-p)`), so a borderline option triggers context gathering.
 - Session-agent detection uses user-message events plus a session-messages fallback (the v1.19 session type has no agent field).
 - Context gathering creates a temporary child session (deleted afterwards) that inherits the project directory, so per-project tools like dewey MCP are available to the context subagent.
+- The pass-0 decision agent runs in the same kind of temporary child session; the project directory is resolved from the opencode launch directory (`input.directory`), so guidance is read from the project opencode was started in.
 - Decisions and errors are logged to `~/.local/share/opencode-auto-question/log.txt` (set `"verbose": true` for debug detail).
 - **Session summaries**: when `sessionSummary` is enabled (default), the plugin injects a visible `noReply` message into the session history after auto-answering or deferring to human. This shows the engine used, confidence scores, and which answers were selected (or why the question was deferred). Set `"sessionSummary": false` to disable.
 - If the human answers first, the plugin's reply fails harmlessly (the pending request is gone) and it moves on.
