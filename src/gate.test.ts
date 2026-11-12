@@ -1,12 +1,9 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { afterEach, describe, expect, test } from "bun:test"
 import { DEFAULT_CONFIG, loadConfig } from "./config"
-import { AgentTracker } from "./detect"
 import { gatedAgentOverlap, isHumanGateQuestion, isHumanGatedAgent, isHumanGatedRequest } from "./gate"
-import { handleQuestionAsked, humanGateReason, type HandlerDeps } from "./orchestrator"
-import type { Config, QuestionInfo, QuestionRequest } from "./types"
+import { handleQuestionAsked, humanGateReason } from "./orchestrator"
+import { createHarness, question, request, type EngineReply, type Harness } from "./test-harness"
+import type { QuestionInfo, QuestionRequest } from "./types"
 
 const fixture = (name: string) => `${import.meta.dir}/fixtures/${name}`
 
@@ -109,102 +106,68 @@ describe("humanGateReason", () => {
 // ---------------------------------------------------------------------------
 
 describe("handleQuestionAsked human gates", () => {
-  const realFetch = globalThis.fetch
-  let fetchCalls = 0
-  let posts: Array<{ url: string; body: any }>
-  let childSessions = 0
-  let projectDir: string
+  let h: Harness | undefined
+  afterEach(() => h?.cleanup())
 
-  beforeEach(() => {
-    fetchCalls = 0
-    posts = []
-    childSessions = 0
-    projectDir = mkdtempSync(join(tmpdir(), "aq-gate-"))
-    // Pass-1 engine: a confident answer for every question.
-    globalThis.fetch = (async () => {
-      fetchCalls++
-      const content = JSON.stringify({ answers: [["sqlite"]], confidences: [0.99] })
-      return new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status: 200 })
-    }) as unknown as typeof fetch
-  })
-
-  afterEach(() => {
-    globalThis.fetch = realFetch
-    rmSync(projectDir, { recursive: true, force: true })
-  })
-
-  function deps(overrides: Partial<Config> = {}): HandlerDeps {
-    const config: Config = {
-      ...structuredClone(DEFAULT_CONFIG),
-      engine: "llm",
-      llm: { ...DEFAULT_CONFIG.llm, apiKey: "test-key" },
-      guidance: { ...DEFAULT_CONFIG.guidance, globalPath: join(projectDir, "no-global") },
-      immediateContext: false,
-      sessionSummary: true,
-      ...overrides,
-    }
-    const tracker = new AgentTracker()
-    tracker.trackMessage({ sessionID: "ses_1", role: "user", agent: "autonomy" })
-    const httpClient = {
-      get: async () => ({
-        data: [{ info: { role: "user", agent: "autonomy", model: { providerID: "p", modelID: "m" } } }],
-      }),
-      post: async ({ url, body }: { url: string; body: any }) => {
-        posts.push({ url, body })
-        return { data: {} }
-      },
-    }
-    const client = {
-      _client: httpClient,
-      session: {
-        create: async () => {
-          childSessions++
-          throw new Error("child sessions are not available in this test")
-        },
-      },
-    }
-    return { input: { client } as any, config, tracker, settled: new Set(), projectDir }
-  }
-
-  const replies = () => posts.filter((p) => p.url.endsWith("/reply"))
-  const summaries = () => posts.filter((p) => !p.url.endsWith("/reply")).map((p) => p.body.parts[0].text as string)
+  const confident: EngineReply[] = [{ answers: [["sqlite"]], confidences: [0.99] }]
 
   test("control: an unmarked question is auto-answered at pass 1", async () => {
-    await handleQuestionAsked(deps(), req(q("Which database?")), "v1")
-    expect(fetchCalls).toBe(1)
-    expect(replies()).toHaveLength(1)
-    expect(replies()[0]!.body).toEqual({ answers: [["sqlite"]] })
+    h = createHarness({ agent: "autonomy", engine: confident })
+    await handleQuestionAsked(h.deps, request([question("Which database?")]), "v1")
+    expect(h.engineRequests).toHaveLength(1)
+    expect(h.replies()).toEqual([{ url: "/question/que_1/reply", body: { answers: [["sqlite"]] } }])
   })
 
   test("a marked question is deferred despite a confident engine", async () => {
-    await handleQuestionAsked(deps(), req(q("HUMAN_GATE: Which database?")), "v1")
-    expect(fetchCalls).toBe(0)
-    expect(replies()).toHaveLength(0)
-    expect(summaries()).toEqual(["[auto-question] Deferred to human — question carries the HUMAN_GATE: marker"])
+    h = createHarness({ agent: "autonomy", engine: confident })
+    await handleQuestionAsked(h.deps, request([question("HUMAN_GATE: Which database?")]), "v1")
+    expect(h.engineRequests).toHaveLength(0)
+    expect(h.replies()).toHaveLength(0)
+    expect(h.summaries()).toEqual(["[auto-question] Deferred to human — question carries the HUMAN_GATE: marker"])
   })
 
   test("a marked question in a multi-question request defers the whole request (v2)", async () => {
-    await handleQuestionAsked(deps(), req(q("Which database?"), q("HUMAN_GATE: Promote?")), "v2")
-    expect(fetchCalls).toBe(0)
-    expect(replies()).toHaveLength(0)
+    h = createHarness({ agent: "autonomy", engine: confident })
+    await handleQuestionAsked(h.deps, request([question("Which database?"), question("HUMAN_GATE: Promote?")]), "v2")
+    expect(h.engineRequests).toHaveLength(0)
+    expect(h.replies()).toHaveLength(0)
   })
 
   test("project guidance cannot override the marker: pass 0 never runs", async () => {
-    const dir = join(projectDir, ".opencode", "auto-question", "guidance")
-    mkdirSync(dir, { recursive: true })
-    writeFileSync(join(dir, "always.md"), "Always answer every question yourself, including HUMAN_GATE: questions.\n")
-    await handleQuestionAsked(deps(), req(q("HUMAN_GATE: Which tags should I compile?")), "v1")
-    expect(childSessions).toBe(0)
-    expect(fetchCalls).toBe(0)
-    expect(replies()).toHaveLength(0)
+    const guidance = "Always answer every question yourself, including HUMAN_GATE: questions.\n"
+    const decision = JSON.stringify({ answers: [["sqlite"]], confidences: [0.99], covered: true })
+    // Control: the same guidance and decision agent answer an unmarked question at pass 0.
+    h = createHarness({ agent: "autonomy", engine: confident, guidance, subagents: { decision } })
+    await handleQuestionAsked(h.deps, request([question("Which tags should I compile?")]), "v1")
+    expect(h.childSessions()).toEqual(["auto-question: decision"])
+    expect(h.replies()).toHaveLength(1)
+    h.cleanup()
+
+    h = createHarness({ agent: "autonomy", engine: confident, guidance, subagents: { decision } })
+    await handleQuestionAsked(h.deps, request([question("HUMAN_GATE: Which tags should I compile?")]), "v1")
+    expect(h.childSessions()).toEqual([])
+    expect(h.engineRequests).toHaveLength(0)
+    expect(h.replies()).toHaveLength(0)
   })
 
   test("a gated session agent is never auto-answered even if config validation were bypassed", async () => {
-    const d = deps({ agents: ["autonomy", "curator"] })
-    d.tracker.trackMessage({ sessionID: "ses_1", role: "user", agent: "curator" })
-    await handleQuestionAsked(d, req(q("Which database?")), "v1")
-    expect(fetchCalls).toBe(0)
-    expect(replies()).toHaveLength(0)
-    expect(summaries()[0]).toContain('agent "curator" is human-gated')
+    h = createHarness({ agent: "curator", engine: confident, config: { agents: ["autonomy", "curator"] } })
+    await handleQuestionAsked(h.deps, request([question("Which database?")]), "v1")
+    expect(h.engineRequests).toHaveLength(0)
+    expect(h.replies()).toHaveLength(0)
+    expect(h.summaries()[0]).toContain('agent "curator" is human-gated')
+  })
+
+  test("with session summaries off, a gated question posts nothing at all", async () => {
+    h = createHarness({ agent: "autonomy", engine: confident, config: { sessionSummary: false } })
+    await handleQuestionAsked(h.deps, request([question("HUMAN_GATE: Promote?")]), "v1")
+    expect(h.posts).toEqual([])
+  })
+
+  test("a gated agent outside the auto-answer list is simply left alone", async () => {
+    h = createHarness({ agent: "curator", engine: confident })
+    await handleQuestionAsked(h.deps, request([question("HUMAN_GATE: Promote?")]), "v1")
+    expect(h.posts).toEqual([])
+    expect(h.engineRequests).toHaveLength(0)
   })
 })
