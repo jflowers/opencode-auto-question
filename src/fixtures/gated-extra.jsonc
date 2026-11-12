@@ -1,0 +1,4 @@
+{
+  "agents": ["autonomy"],
+  "humanGatedAgents": ["release-manager"]
+}

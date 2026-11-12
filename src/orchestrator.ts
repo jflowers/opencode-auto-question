@@ -2,6 +2,7 @@ import type { Config, Decision, QuestionRequest } from "./types"
 import type { Plugin } from "@opencode-ai/plugin"
 import { AgentTracker, isAutonomousAgent } from "./detect"
 import { gatherContext } from "./context"
+import { isHumanGatedAgent, isHumanGatedRequest } from "./gate"
 import { loadGuidance } from "./guidance"
 import { decideWithAgent } from "./engines/agent"
 import { decideWithJev, resolveJevCarrier } from "./engines/jev"
@@ -365,6 +366,19 @@ async function decideAndReply(deps: HandlerDeps, request: QuestionRequest, versi
   }
 }
 
+/**
+ * Why a request must be left for the human regardless of any engine, or null.
+ * Checked before pass 0, so neither project guidance nor engine confidence
+ * can override it.
+ */
+export function humanGateReason(agent: string | undefined, request: QuestionRequest, config: Config): string | null {
+  // Defense in depth: loadConfig already rejects an `agents` list that
+  // overlaps humanGatedAgents.
+  if (isHumanGatedAgent(agent, config.humanGatedAgents)) return `agent "${agent}" is human-gated`
+  if (isHumanGatedRequest(request)) return "question carries the HUMAN_GATE: marker"
+  return null
+}
+
 /** Entry point for question.asked / question.v2.asked events. Fire-and-forget. */
 export async function handleQuestionAsked(
   deps: HandlerDeps,
@@ -384,6 +398,15 @@ export async function handleQuestionAsked(
 
   if (!isAutonomousAgent(agent, config)) {
     log("debug", "session not autonomous — leaving for human", { requestID: request.id, agent })
+    return
+  }
+
+  const gate = humanGateReason(agent, request, config)
+  if (gate) {
+    log("info", "human gate — leaving for human", { requestID: request.id, reason: gate })
+    if (config.sessionSummary) {
+      await injectSummary(deps, request.sessionID, `[auto-question] Deferred to human — ${gate}`)
+    }
     return
   }
 

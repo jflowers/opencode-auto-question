@@ -11,6 +11,10 @@ question.asked event
 Session agent in config "agents" list? ── NO ──▶ human answers (TUI form)
         │ YES
         ▼
+Human gate? (HUMAN_GATE: marker, ── YES ──▶ human answers (TUI form)
+ or human-gated agent)                  never overridden by guidance
+        │ NO                            or confidence
+        ▼
 ╔══ PASS 0: project guidance decision ═════════╗
 ║ Only when guidance docs exist:               ║
 ║ temp child session with a tool-using decision║
@@ -162,6 +166,16 @@ Semantics:
 
 When no guidance documents exist anywhere, pass 0 is skipped entirely and behavior is unchanged.
 
+## Human gates
+
+Some questions are deliberate human decisions — for example the scope and promotion-review questions of Dewey's `/dewey-distill`. Auto-answering them would silently turn human promotion into automatic promotion, so the plugin never answers them:
+
+- **Marker**: a question (or its header) that begins with `HUMAN_GATE:` always goes to the human, regardless of engine confidence. One marked question defers the whole request. Detection is lenient (leading whitespace and any letter case count), because a false or spoofed marker can only force a human answer. The contract is defined in Dewey's `curator-agent-human-gates` change (design D7): `HUMAN_GATE: <question>` at the start of the first line.
+- **Gated agents**: the config fails to load, with an error naming the agent, when `agents` includes an agent in `humanGatedAgents` (always including `curator`). A failed load leaves the plugin inert, so every question goes to the human. As defense in depth, a question from a gated agent is also never answered at runtime.
+- Both checks run before pass 0, so project guidance documents cannot override them.
+
+Dewey's `dewey gate auto-answer` startup check refuses `/dewey-distill` independently when `curator` appears in this plugin's `agents` list.
+
 ## Config
 
 `~/.config/opencode/auto-question.jsonc` (JSONC with `{env:VAR}` interpolation). See [config/auto-question.jsonc](config/auto-question.jsonc) for all options:
@@ -169,6 +183,7 @@ When no guidance documents exist anywhere, pass 0 is skipped entirely and behavi
 | Option | Default | Meaning |
 |---|---|---|
 | `agents` | `["autonomy"]` | Session agents that trigger auto-answering |
+| `humanGatedAgents` | `["curator"]` | Agents whose questions are deliberate human gates; config load fails if `agents` overlaps this set. Entries extend the built-in `curator`, never replace it |
 | `engine` | `"auto"` | `"jev"`, `"llm"`, or `"auto"` (jev first, llm fallback) |
 | `jev` | auto-discovered | Carrier: explicit `apiKey`+`baseUrl`+`model` in config, else `OPENCODE_API_KEY` → OpenCode Zen (`jev-1.13`, ~$0.000013/call), else `OPENROUTER_API_KEY` → OpenRouter (`typesafe/jev-1.14`) |
 | `confidenceThreshold` | `0.6` | Pass 1 answers at or above this immediately |

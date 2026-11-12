@@ -1,0 +1,4 @@
+{
+  // curator (built-in human-gated) listed for auto-answering: must not load
+  "agents": ["autonomy", "Curator"]
+}

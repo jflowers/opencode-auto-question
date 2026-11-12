@@ -1,0 +1,5 @@
+{
+  "agents": ["autonomy", "reviewer"],
+  // trying to drop the built-in "curator" entry does not remove it
+  "humanGatedAgents": ["reviewer"]
+}
