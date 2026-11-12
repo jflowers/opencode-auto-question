@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import type { Config } from "./types"
+import { BUILTIN_HUMAN_GATED_AGENTS, gatedAgentOverlap } from "./gate"
 
 export class ConfigError extends Error {}
 
@@ -12,6 +13,7 @@ export function defaultConfigPath(): string {
 export const DEFAULT_CONFIG: Config = {
   enabled: true,
   agents: ["autonomy"],
+  humanGatedAgents: [...BUILTIN_HUMAN_GATED_AGENTS],
   engine: "auto",
   jev: {
     model: "typesafe/jev-1.14",
@@ -152,6 +154,19 @@ export function loadConfig(path: string = defaultConfigPath()): Config {
   if (typeof config.enabled !== "boolean") throw new ConfigError("enabled must be a boolean")
   if (!Array.isArray(config.agents) || config.agents.length === 0 || !config.agents.every((a) => typeof a === "string")) {
     throw new ConfigError("agents must be a non-empty array of strings")
+  }
+  if (!Array.isArray(config.humanGatedAgents) || !config.humanGatedAgents.every((a) => typeof a === "string")) {
+    throw new ConfigError("humanGatedAgents must be an array of strings")
+  }
+  // The built-in gated agents cannot be removed by configuration.
+  config.humanGatedAgents = [...new Set([...BUILTIN_HUMAN_GATED_AGENTS, ...config.humanGatedAgents])]
+  const overlap = gatedAgentOverlap(config.agents, config.humanGatedAgents)
+  if (overlap.length > 0) {
+    throw new ConfigError(
+      `agents includes human-gated agent(s) ${overlap.map((a) => JSON.stringify(a)).join(", ")}: ` +
+        "their questions are deliberate human gates and must never be auto-answered. " +
+        `Remove ${overlap.length === 1 ? "it" : "them"} from "agents" in the auto-question config.`,
+    )
   }
   if (config.engine !== "jev" && config.engine !== "llm" && config.engine !== "auto") {
     throw new ConfigError("engine must be one of: jev, llm, auto")

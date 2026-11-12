@@ -5,6 +5,7 @@ import type { Config } from "../types"
 const base: Config = {
   enabled: true,
   agents: ["autonomy"],
+  humanGatedAgents: ["curator"],
   engine: "auto",
   jev: {
     model: "typesafe/jev-1.14",

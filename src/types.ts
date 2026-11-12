@@ -68,6 +68,11 @@ export interface Config {
   enabled: boolean
   /** Session agent names that trigger auto-answering. */
   agents: string[]
+  /**
+   * Agents whose questions are deliberate human gates. Config load fails
+   * when `agents` overlaps this set. "curator" is always included.
+   */
+  humanGatedAgents: string[]
   engine: "jev" | "llm" | "auto"
   jev: JevConfig
   llm: LlmConfig

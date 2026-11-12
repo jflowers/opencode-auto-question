@@ -8,6 +8,12 @@
   // Sessions whose selected agent matches one of these names get auto-answered.
   "agents": ["autonomy"],
 
+  // Agents whose questions are deliberate human gates (e.g. Dewey's curator).
+  // Loading fails if "agents" overlaps this list; "curator" is always included.
+  // Independently, any question beginning with "HUMAN_GATE:" is never
+  // auto-answered, and project guidance cannot override either rule.
+  "humanGatedAgents": ["curator"],
+
   // Decision engine: "jev" (TypeSafe decision model), "llm" (JSON-contract
   // chat completion), or "auto" (jev first, llm fallback).
   "engine": "auto",

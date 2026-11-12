@@ -71,7 +71,7 @@ const plugin: Plugin = async (input) => {
   try {
     config = loadConfig()
   } catch (e) {
-    log("warn", "config load failed — plugin inert", { error: String(e) })
+    log("error", "config load failed — plugin inert", { error: String(e) })
     return {}
   }
   if (!config.enabled) {
