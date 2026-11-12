@@ -9,5 +9,7 @@ confidence gate with subagent context gathering, human fallback.
 - Agents: `agents/*.md` (symlinked into `~/.config/opencode/agents/`)
 - Log: `~/.local/share/opencode-auto-question/log.txt`
 
-Verify changes with `bun run typecheck && bun test`. Runtime imports are
+Verify changes with `bun run typecheck && bun test` (CI runs both on every
+pull request: `.github/workflows/ci.yml`). End-to-end orchestrator tests use
+the fake client and stubbed engine in `src/test-harness.ts`. Runtime imports are
 type-only (`import type`); the host provides the plugin SDK.
