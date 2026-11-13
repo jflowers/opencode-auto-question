@@ -1,13 +1,47 @@
 import { existsSync, readFileSync } from "node:fs"
 import { homedir } from "node:os"
-import { join } from "node:path"
+import { dirname, isAbsolute, join, resolve } from "node:path"
 import type { Config } from "./types"
 import { BUILTIN_HUMAN_GATED_AGENTS, gatedAgentOverlap, isHumanGatedAgent, mergeGatedAgents } from "./gate"
 
 export class ConfigError extends Error {}
 
+export const CONFIG_FILE_NAME = "auto-question.jsonc"
+
 export function defaultConfigPath(): string {
-  return join(homedir(), ".config", "opencode", "auto-question.jsonc")
+  return join(homedir(), ".config", "opencode", CONFIG_FILE_NAME)
+}
+
+/** One config file to load, in order. Later files win. */
+export interface ConfigSource {
+  path: string
+  /** A missing required file is an error; a missing optional one is skipped. */
+  required: boolean
+}
+
+/**
+ * The config files to load, lowest precedence first.
+ *
+ * - `AUTO_QUESTION_CONFIG` names one file, used alone over the defaults
+ *   (neither the global file nor the config dir is read). It must exist.
+ * - Otherwise the global file, then `$OPENCODE_CONFIG_DIR/auto-question.jsonc`
+ *   when that variable is set. Either may be missing.
+ */
+export function configSources(env: Record<string, string | undefined> = process.env): ConfigSource[] {
+  const explicit = env.AUTO_QUESTION_CONFIG?.trim()
+  if (explicit) return [{ path: resolve(expandHome(explicit)), required: true }]
+  const sources: ConfigSource[] = [{ path: defaultConfigPath(), required: false }]
+  const configDir = env.OPENCODE_CONFIG_DIR?.trim()
+  if (configDir) {
+    const path = resolve(expandHome(configDir), CONFIG_FILE_NAME)
+    if (path !== defaultConfigPath()) sources.push({ path, required: false })
+  }
+  return sources
+}
+
+function expandHome(p: string): string {
+  if (p === "~" || p.startsWith("~/")) return join(homedir(), p.slice(2))
+  return p
 }
 
 export const DEFAULT_CONFIG: Config = {
@@ -134,33 +168,66 @@ function clamp01(n: unknown, fallback: number): number {
 }
 
 /**
- * Load, parse, interpolate, and validate the plugin config. Throws ConfigError
- * for invalid config. Problems the loader can repair without weakening a
- * guarantee are repaired and reported through `warn` instead, so one bad entry
- * does not turn the whole plugin off.
+ * Read one config file: parsed, interpolated, with a relative
+ * `guidance.globalPath` resolved against the file's own directory (so a
+ * config dir can ship its guidance next to it). `guidance.projectPath` stays
+ * relative to the project. Returns null for a missing optional file.
  */
-export function loadConfig(path: string = defaultConfigPath(), warn: (message: string) => void = () => {}): Config {
+export function readConfigFile(source: ConfigSource): Record<string, unknown> | null {
+  const { path } = source
   // No config file is a supported setup (an npm install with only an API key
   // in the environment): run on the defaults. A file that exists but can't be
   // read is still an error.
-  let text = "{}"
-  if (existsSync(path)) {
-    try {
-      text = readFileSync(path, "utf8")
-    } catch {
-      throw new ConfigError(`config file not readable: ${path}`)
-    }
+  if (!existsSync(path)) {
+    if (source.required) throw new ConfigError(`config file not found: ${path} (from AUTO_QUESTION_CONFIG)`)
+    return null
+  }
+  let text: string
+  try {
+    text = readFileSync(path, "utf8")
+  } catch {
+    throw new ConfigError(`config file not readable: ${path}`)
   }
 
   let raw: unknown
   try {
     raw = JSON.parse(stripJsonComments(text))
   } catch (e) {
-    throw new ConfigError(`config file is not valid JSONC: ${String(e)}`)
+    throw new ConfigError(`config file is not valid JSONC (${path}): ${String(e)}`)
   }
-  if (!isPlainObject(raw)) throw new ConfigError("config root must be an object")
+  if (!isPlainObject(raw)) throw new ConfigError(`config root must be an object (${path})`)
 
-  const config = mergeConfig(DEFAULT_CONFIG, interpolateEnv(raw) as Record<string, unknown>)
+  const values = interpolateEnv(raw) as Record<string, unknown>
+  const guidance = values.guidance
+  if (isPlainObject(guidance) && typeof guidance.globalPath === "string") {
+    const p = guidance.globalPath
+    if (p.length > 0 && !isAbsolute(p) && p !== "~" && !p.startsWith("~/")) {
+      values.guidance = { ...guidance, globalPath: resolve(dirname(path), p) }
+    }
+  }
+  return values
+}
+
+/**
+ * Load, parse, interpolate, and validate the plugin config. Throws ConfigError
+ * for invalid config. Problems the loader can repair without weakening a
+ * guarantee are repaired and reported through `warn` instead, so one bad entry
+ * does not turn the whole plugin off.
+ *
+ * `sources` defaults to configSources(): the global file, then the
+ * OPENCODE_CONFIG_DIR file, each deep-merged over the last. A single path is
+ * one optional file.
+ */
+export function loadConfig(
+  sources: string | ConfigSource[] = configSources(),
+  warn: (message: string) => void = () => {},
+): Config {
+  const list = typeof sources === "string" ? [{ path: sources, required: false }] : sources
+  let config = structuredClone(DEFAULT_CONFIG)
+  for (const source of list) {
+    const values = readConfigFile(source)
+    if (values) config = mergeConfig(config, values)
+  }
 
   if (typeof config.enabled !== "boolean") throw new ConfigError("enabled must be a boolean")
   if (!Array.isArray(config.agents) || config.agents.length === 0 || !config.agents.every((a) => typeof a === "string")) {

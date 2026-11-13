@@ -1,5 +1,16 @@
-import { describe, expect, test } from "bun:test"
-import { DEFAULT_CONFIG, interpolateEnv, loadConfig, mergeConfig, stripJsonComments } from "./config"
+import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { homedir, tmpdir } from "node:os"
+import { dirname, join } from "node:path"
+import {
+  DEFAULT_CONFIG,
+  configSources,
+  defaultConfigPath,
+  interpolateEnv,
+  loadConfig,
+  mergeConfig,
+  stripJsonComments,
+} from "./config"
 
 describe("stripJsonComments", () => {
   test("strips line comments", () => {
@@ -107,5 +118,116 @@ describe("loadConfig", () => {
     expect(config.agentDecision.timeoutMs).toBe(DEFAULT_CONFIG.agentDecision.timeoutMs)
     // maxChars below floor resets to the default
     expect(config.guidance.maxChars).toBe(DEFAULT_CONFIG.guidance.maxChars)
+  })
+})
+
+describe("configSources", () => {
+  test("no env vars: only the global file, optional", () => {
+    expect(configSources({})).toEqual([{ path: defaultConfigPath(), required: false }])
+  })
+
+  test("OPENCODE_CONFIG_DIR adds its auto-question.jsonc after the global file", () => {
+    expect(configSources({ OPENCODE_CONFIG_DIR: "/opt/gh-hud/opencode" })).toEqual([
+      { path: defaultConfigPath(), required: false },
+      { path: "/opt/gh-hud/opencode/auto-question.jsonc", required: false },
+    ])
+  })
+
+  test("OPENCODE_CONFIG_DIR pointing at the global dir does not load the file twice", () => {
+    expect(configSources({ OPENCODE_CONFIG_DIR: join(homedir(), ".config", "opencode") })).toHaveLength(1)
+  })
+
+  test("AUTO_QUESTION_CONFIG is used alone and is required", () => {
+    expect(configSources({ AUTO_QUESTION_CONFIG: "/etc/aq.jsonc", OPENCODE_CONFIG_DIR: "/opt/x" })).toEqual([
+      { path: "/etc/aq.jsonc", required: true },
+    ])
+  })
+
+  test("blank variables are ignored", () => {
+    expect(configSources({ AUTO_QUESTION_CONFIG: " ", OPENCODE_CONFIG_DIR: "" })).toHaveLength(1)
+  })
+})
+
+describe("loadConfig with several sources", () => {
+  let dir: string
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "aq-config-"))
+  })
+  afterEach(() => rmSync(dir, { recursive: true, force: true }))
+
+  const write = (name: string, value: unknown): string => {
+    const path = join(dir, name)
+    mkdirSync(dirname(path), { recursive: true })
+    writeFileSync(path, JSON.stringify(value))
+    return path
+  }
+
+  test("a later file deep-merges over an earlier one", () => {
+    const global = write("global/auto-question.jsonc", { agents: ["autonomy"], llm: { model: "a" }, confidenceThreshold: 0.7 })
+    const local = write("local/auto-question.jsonc", { agents: ["hud-supervisor"], llm: { model: "b" } })
+    const config = loadConfig([
+      { path: global, required: false },
+      { path: local, required: false },
+    ])
+    expect(config.agents).toEqual(["hud-supervisor"])
+    expect(config.llm.model).toBe("b")
+    expect(config.llm.baseUrl).toBe(DEFAULT_CONFIG.llm.baseUrl)
+    expect(config.confidenceThreshold).toBe(0.7)
+  })
+
+  test("a missing optional source is skipped", () => {
+    const local = write("local/auto-question.jsonc", { llm: { model: "b" } })
+    const config = loadConfig([
+      { path: join(dir, "nope.jsonc"), required: false },
+      { path: local, required: false },
+    ])
+    expect(config.llm.model).toBe("b")
+  })
+
+  test("a missing required source throws", () => {
+    expect(() => loadConfig([{ path: join(dir, "nope.jsonc"), required: true }])).toThrow(/not found.*AUTO_QUESTION_CONFIG/)
+  })
+
+  test("a relative guidance.globalPath resolves against its own file's directory", () => {
+    const global = write("global/auto-question.jsonc", { guidance: { globalPath: "g" } })
+    const local = write("local/auto-question.jsonc", { guidance: { globalPath: "auto-question/guidance" } })
+    expect(loadConfig([{ path: global, required: false }]).guidance.globalPath).toBe(join(dir, "global", "g"))
+    expect(
+      loadConfig([
+        { path: global, required: false },
+        { path: local, required: false },
+      ]).guidance.globalPath,
+    ).toBe(join(dir, "local", "auto-question", "guidance"))
+  })
+
+  test("absolute and ~ guidance paths, and projectPath, are left as written", () => {
+    const local = write("local/auto-question.jsonc", {
+      guidance: { globalPath: "~/g", projectPath: ".opencode/q" },
+    })
+    const config = loadConfig([{ path: local, required: false }])
+    expect(config.guidance.globalPath).toBe("~/g")
+    expect(config.guidance.projectPath).toBe(".opencode/q")
+  })
+
+  test("a human-gated agent added by a later file is still dropped", () => {
+    const global = write("global/auto-question.jsonc", { agents: ["autonomy"] })
+    const local = write("local/auto-question.jsonc", { agents: ["autonomy", "Curator"] })
+    const warnings: string[] = []
+    const config = loadConfig(
+      [
+        { path: global, required: false },
+        { path: local, required: false },
+      ],
+      (m) => warnings.push(m),
+    )
+    expect(config.agents).toEqual(["autonomy"])
+    expect(warnings).toHaveLength(1)
+  })
+
+  test("loading never changes DEFAULT_CONFIG", () => {
+    const before = structuredClone(DEFAULT_CONFIG)
+    const local = write("local/auto-question.jsonc", { llm: { apiKey: 5, timeoutMs: 1 } })
+    loadConfig([{ path: local, required: false }])
+    expect(DEFAULT_CONFIG).toEqual(before)
   })
 })

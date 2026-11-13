@@ -6,15 +6,25 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `$OPENCODE_CONFIG_DIR/auto-question.jsonc` is loaded after the global file
+  and deep-merged over it, so a tool can ship a self-contained opencode setup
+  (#6). `AUTO_QUESTION_CONFIG=<path>` names one file to use instead of both.
+  The log lists the files loaded.
+
+### Changed
+- A relative `guidance.globalPath` now resolves against the directory of the
+  config file that sets it, not the process working directory.
+- Internal: deciding a question now returns an outcome (answered, deferred,
+  gated, timed out) and one function replies and writes the summary for all of
+  them. This prepares `onDefer` (#7) and structured results (#10).
+
 ### Fixed
 - A decision that finishes after `handlerTimeoutMs` is now dropped. Before, it
   was still replied after the question had been left for the human and the
   "handler timed out" summary written.
-
-### Changed
-- Internal: deciding a question now returns an outcome (answered, deferred,
-  gated, timed out) and one function replies and writes the summary for all of
-  them. This prepares `onDefer` (#7) and structured results (#10).
+- Loading the config no longer mutates the built-in defaults when a file
+  leaves a block out and validation repairs it.
 
 ## [0.1.2] - 2026-11-13
 

@@ -1,6 +1,7 @@
 import type { Plugin, PluginModule } from "@opencode-ai/plugin"
 import { loadBundledAgents, registerAgents, type AgentDefinition } from "./agents"
-import { loadConfig } from "./config"
+import { existsSync } from "node:fs"
+import { configSources, loadConfig } from "./config"
 import { AgentTracker } from "./detect"
 import { handleQuestionAsked, markSettled, type HandlerDeps } from "./orchestrator"
 import { resolveJevCarrier } from "./engines/jev"
@@ -63,7 +64,12 @@ function onEvent(deps: HandlerDeps, inflight: Set<string>, event: EventPayload):
 const plugin: Plugin = async (input) => {
   let config
   try {
-    config = loadConfig(undefined, (message) => log("error", "config problem — repaired", { message }))
+    const sources = configSources()
+    config = loadConfig(sources, (message) => log("error", "config problem — repaired", { message }))
+    log("info", "config files", {
+      loaded: sources.filter((s) => existsSync(s.path)).map((s) => s.path),
+      missing: sources.filter((s) => !existsSync(s.path)).map((s) => s.path),
+    })
   } catch (e) {
     log("error", "config load failed — plugin inert", { error: String(e) })
     return {}
