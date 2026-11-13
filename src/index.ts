@@ -88,6 +88,7 @@ const plugin: Plugin = async (input) => {
     jev: jevCarrier ? `${jevCarrier.carrier} (${jevCarrier.model})` : "unavailable",
     confidenceThreshold: config.confidenceThreshold,
     fallbackThreshold: config.fallbackThreshold,
+    profiles: Object.keys(config.profiles),
   })
 
   const deps: HandlerDeps = {

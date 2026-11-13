@@ -28,6 +28,7 @@ const base: Config = {
   immediateContext: true,
   sessionSummary: true,
   verbose: false,
+  profiles: {},
   registerAgents: true,
 }
 

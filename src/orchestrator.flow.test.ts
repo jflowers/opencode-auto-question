@@ -1,4 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test"
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { DEFAULT_CONFIG } from "./config"
 import { handleQuestionAsked } from "./orchestrator"
 import { createHarness, question, request, type Harness } from "./test-harness"
 
@@ -194,6 +198,74 @@ describe("handleQuestionAsked decision flow", () => {
       await handleQuestionAsked(h.deps, q(), "v1")
       expect(h.childSessions()).toEqual([])
       expect(h.engineRequests).toHaveLength(1)
+    })
+  })
+
+  describe("profiles", () => {
+    const agents = ["autonomy", "hud-supervisor"]
+    let dirs: string[] = []
+    afterEach(() => {
+      for (const d of dirs) rmSync(d, { recursive: true, force: true })
+      dirs = []
+    })
+    const guidanceDir = (text: string) => {
+      const d = mkdtempSync(join(tmpdir(), "aq-profile-guidance-"))
+      dirs.push(d)
+      mkdirSync(d, { recursive: true })
+      writeFileSync(join(d, "doc.md"), text)
+      return d
+    }
+    const decisionPrompts = (h: Harness) =>
+      h.posts.filter((p) => /^\/session\/child_\d+\/message$/.test(p.url)).map((p) => p.body.parts[0].text as string)
+
+    test("a profile's threshold applies to its agent only", async () => {
+      const config = { agents, profiles: { "hud-supervisor": { confidenceThreshold: 0.9 } } }
+      h = createHarness({ agent: "autonomy", engine: [decide(0.8)], config })
+      await handleQuestionAsked(h.deps, q(), "v1")
+      expect(h.replies()).toHaveLength(1)
+      h.cleanup()
+
+      h = createHarness({ agent: "hud-supervisor", engine: [decide(0.8)], subagents: { context: null }, config })
+      await handleQuestionAsked(h.deps, q(), "v1")
+      expect(h.replies()).toHaveLength(0)
+      expect(h.summaries()[0]).toContain("below threshold 0.90")
+    })
+
+    test("a profile's llm model is the one the engine is asked", async () => {
+      const config = { agents, profiles: { "hud-supervisor": { llm: { model: "qwen/qwen3" } } } }
+      h = createHarness({ agent: "hud-supervisor", engine: [decide(0.9)], config })
+      await handleQuestionAsked(h.deps, q(), "v1")
+      expect(h.engineRequests[0].model).toBe("qwen/qwen3")
+    })
+
+    test("inheritGlobal false: the decision agent sees only the profile's guidance", async () => {
+      const shared = guidanceDir("SHARED: always proceed.")
+      const own = guidanceDir("HUD: judge the proposal on the evidence.")
+      const config = {
+        agents,
+        guidance: { ...DEFAULT_CONFIG.guidance, globalPath: shared },
+        profiles: { "hud-supervisor": { guidance: { globalPath: own, inheritGlobal: false } } },
+      }
+      const decision = JSON.stringify({ answers: [["sqlite"]], confidences: [0.9], covered: true })
+      h = createHarness({ agent: "hud-supervisor", engine: [decide(0.1)], subagents: { decision }, config })
+      await handleQuestionAsked(h.deps, q(), "v1")
+      const [prompt] = decisionPrompts(h)
+      expect(prompt).toContain("HUD: judge the proposal on the evidence.")
+      expect(prompt).not.toContain("SHARED")
+      h.cleanup()
+
+      // autonomy still gets the shared guidance.
+      h = createHarness({ agent: "autonomy", engine: [decide(0.1)], subagents: { decision }, config })
+      await handleQuestionAsked(h.deps, q(), "v1")
+      expect(decisionPrompts(h)[0]).toContain("SHARED: always proceed.")
+    })
+
+    test("a HUMAN_GATE question is left for the human whatever the profile says", async () => {
+      const config = { agents, profiles: { "hud-supervisor": { confidenceThreshold: 0, fallbackThreshold: 0 } } }
+      h = createHarness({ agent: "hud-supervisor", engine: [decide(0.99)], config })
+      await handleQuestionAsked(h.deps, request([question("HUMAN_GATE: Merge it?")]), "v1")
+      expect(h.engineRequests).toHaveLength(0)
+      expect(h.replies()).toHaveLength(0)
     })
   })
 })
