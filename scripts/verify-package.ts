@@ -13,9 +13,16 @@ import { BUNDLED_AGENTS } from "../src/agents"
 const root = join(import.meta.dir, "..")
 const errors: string[] = []
 
-const packed = JSON.parse(
-  execFileSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], { cwd: root, encoding: "utf8" }),
-) as Array<{ files: Array<{ path: string }> }>
+// npm 10 runs the prepare script during `pack` despite --ignore-scripts, and
+// the build's output lands on stdout ahead of the JSON. Parse from the line
+// where the JSON array starts.
+const packOutput = execFileSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], {
+  cwd: root,
+  encoding: "utf8",
+})
+const jsonStart = packOutput.search(/^\[/m)
+if (jsonStart < 0) throw new Error(`npm pack printed no JSON:\n${packOutput}`)
+const packed = JSON.parse(packOutput.slice(jsonStart)) as Array<{ files: Array<{ path: string }> }>
 const files = new Set(packed[0]!.files.map((f) => f.path))
 
 const required = [
