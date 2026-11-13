@@ -14,8 +14,13 @@ import { AgentTracker } from "./detect"
 import type { HandlerDeps } from "./orchestrator"
 import type { Config, QuestionInfo, QuestionRequest } from "./types"
 
-/** One LLM engine response: a decision, an HTTP error status, or a fetch that never settles. */
-export type EngineReply = { answers: string[][]; confidences: number[] } | { status: number } | "hang"
+type EngineDecision = { answers: string[][]; confidences: number[] }
+
+/**
+ * One LLM engine response: a decision, an HTTP error status, a fetch that
+ * never settles, or a decision that arrives after a delay.
+ */
+export type EngineReply = EngineDecision | { status: number } | "hang" | { delayMs: number; reply: EngineDecision }
 
 /** Subagent replies keyed by child-session title prefix ("auto-question: decision" / "...: context gathering"). */
 export type SubagentReplies = Partial<Record<"decision" | "context", string | null>>
@@ -91,7 +96,14 @@ export function createHarness(opts: HarnessOptions = {}): Harness {
     if (reply === undefined) throw new Error("no engine reply configured")
     if (reply === "hang") return new Promise<Response>(() => {})
     if ("status" in reply) return new Response("upstream error", { status: reply.status })
-    const content = JSON.stringify(reply)
+    let decision: EngineDecision
+    if ("delayMs" in reply) {
+      await new Promise((resolve) => setTimeout(resolve, reply.delayMs))
+      decision = reply.reply
+    } else {
+      decision = reply
+    }
+    const content = JSON.stringify(decision)
     return new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status: 200 })
   }) as unknown as typeof fetch
 
