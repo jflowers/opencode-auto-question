@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import type { Config } from "./types"
@@ -22,9 +22,9 @@ export const DEFAULT_CONFIG: Config = {
     timeoutMs: 15_000,
   },
   llm: {
-    baseUrl: "https://api.enmaas.devshift.net/v1",
-    apiKey: "{env:ENMAAS_KEY}",
-    model: "rits/zai-org/glm-5-3",
+    baseUrl: "https://openrouter.ai/api/v1",
+    apiKey: "{env:OPENROUTER_API_KEY}",
+    model: "openrouter/auto",
     timeoutMs: 60_000,
   },
   confidenceThreshold: 0.6,
@@ -47,6 +47,7 @@ export const DEFAULT_CONFIG: Config = {
   sessionSummary: true,
   handlerTimeoutMs: 120_000,
   verbose: false,
+  registerAgents: true,
 }
 
 /**
@@ -139,11 +140,16 @@ function clamp01(n: unknown, fallback: number): number {
  * does not turn the whole plugin off.
  */
 export function loadConfig(path: string = defaultConfigPath(), warn: (message: string) => void = () => {}): Config {
-  let text: string
-  try {
-    text = readFileSync(path, "utf8")
-  } catch {
-    throw new ConfigError(`config file not readable: ${path}`)
+  // No config file is a supported setup (an npm install with only an API key
+  // in the environment): run on the defaults. A file that exists but can't be
+  // read is still an error.
+  let text = "{}"
+  if (existsSync(path)) {
+    try {
+      text = readFileSync(path, "utf8")
+    } catch {
+      throw new ConfigError(`config file not readable: ${path}`)
+    }
   }
 
   let raw: unknown
@@ -188,6 +194,7 @@ export function loadConfig(path: string = defaultConfigPath(), warn: (message: s
     config.handlerTimeoutMs = DEFAULT_CONFIG.handlerTimeoutMs
   }
   if (typeof config.verbose !== "boolean") config.verbose = false
+  if (typeof config.registerAgents !== "boolean") throw new ConfigError("registerAgents must be a boolean")
   if (typeof config.immediateContext !== "boolean") config.immediateContext = true
   if (typeof config.sessionSummary !== "boolean") config.sessionSummary = true
 

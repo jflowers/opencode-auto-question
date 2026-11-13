@@ -1,0 +1,35 @@
+# Changelog
+
+All notable changes to this project are documented here. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
+[Semantic Versioning](https://semver.org/).
+
+## [Unreleased]
+
+### Added
+- npm packaging: built `dist/`, one default export with `server` (opencode
+  1.x) and `setup` (opencode v2), a package check (`bun run verify:package`),
+  and a tag-triggered publish workflow with npm provenance.
+- The plugin registers its bundled agents (`autonomy`, `auto-question-ctx`,
+  `auto-question-decide`) through opencode's config hook, so no symlinks are
+  needed. A user-defined agent of the same name always wins. Turn off with
+  `"registerAgents": false`.
+- `auto-question.schema.json` for editor completion in the config file.
+
+### Changed
+- A missing `~/.config/opencode/auto-question.jsonc` now runs on the defaults
+  instead of leaving the plugin inert.
+- The default `llm` engine is OpenRouter (`https://openrouter.ai/api/v1`,
+  `OPENROUTER_API_KEY`, model `openrouter/auto`). Configs that set `llm`
+  explicitly are unaffected.
+- A git checkout must be built before opencode can load it: run `bun install`
+  (its prepare script builds `dist/`) after cloning or pulling.
+
+### opencode v2
+- Not supported yet. On a v2 host the plugin loads, logs a warning, and leaves
+  every question for a human: v2 replaced question events with forms, and its
+  plugin API does not expose answering a form.
+
+## [0.1.0]
+- Human gates (`HUMAN_GATE:` marker, `humanGatedAgents`), pass-0 project
+  guidance, two-pass Jev/LLM decisions, and CI. Never published to npm.

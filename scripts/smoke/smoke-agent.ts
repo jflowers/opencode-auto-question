@@ -7,9 +7,9 @@
  * Scenario 2: covered but low confidence → deferred to human (no reply).
  * Scenario 3: not covered → falls through to pass 1 (engine) → replied.
  *
- * Run: OPENROUTER_API_KEY=smoke bun run smoke-agent.ts
+ * Run: OPENROUTER_API_KEY=smoke bun run scripts/smoke/smoke-agent.ts
  */
-import pluginModule from "./src/index"
+import pluginModule from "../../src/index"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -72,7 +72,7 @@ globalThis.fetch = (async (url: any, init?: any) => {
       { status: 200, headers: { "content-type": "application/json" } },
     )
   }
-  if (u.includes("enmaas")) {
+  if (u.endsWith("/chat/completions")) {
     return new Response(
       JSON.stringify({
         choices: [{ message: { content: '{"answers": [["sqlite"]], "confidences": [0.92]}' } }],

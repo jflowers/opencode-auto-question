@@ -1,4 +1,5 @@
 import type { Plugin, PluginModule } from "@opencode-ai/plugin"
+import { loadBundledAgents, registerAgents, type AgentDefinition } from "./agents"
 import { loadConfig } from "./config"
 import { AgentTracker } from "./detect"
 import { handleQuestionAsked, markSettled, type HandlerDeps } from "./orchestrator"
@@ -92,7 +93,26 @@ const plugin: Plugin = async (input) => {
   }
   const inflight = new Set<string>()
 
+  let bundledAgents: Record<string, AgentDefinition> | null = null
+  if (config.registerAgents) {
+    try {
+      bundledAgents = loadBundledAgents()
+    } catch (e) {
+      // Not fatal: the plugin still answers for agents defined elsewhere.
+      log("error", "bundled agents unreadable — not registering them", { error: String(e) })
+    }
+  }
+
   return {
+    config: async (opencodeConfig) => {
+      if (!bundledAgents) return
+      try {
+        const { added, kept } = registerAgents(opencodeConfig as { agent?: Record<string, unknown> }, bundledAgents)
+        log("info", "bundled agents", { added, keptUserDefined: kept })
+      } catch (e) {
+        log("error", "agent registration failed", { error: String(e) })
+      }
+    },
     event: async ({ event }) => {
       try {
         onEvent(deps, inflight, event)
@@ -106,4 +126,24 @@ const plugin: Plugin = async (input) => {
   }
 }
 
-export default { id: "auto-question", server: plugin } satisfies PluginModule
+const V2_UNSUPPORTED =
+  "auto-question supports opencode 1.x only for now; on this opencode (v2 plugin API) it is installed but inactive. " +
+  "Questions are left for a human."
+
+/**
+ * opencode v2 entry point. v2 replaced the question tool's events with forms,
+ * and its plugin context does not expose replying to a form, so there is
+ * nothing to hook yet. Say so loudly rather than load silently and do nothing.
+ */
+async function setup(_ctx: unknown): Promise<void> {
+  log("warn", V2_UNSUPPORTED)
+  console.warn(`[auto-question] ${V2_UNSUPPORTED}`)
+}
+
+/**
+ * One package for both plugin APIs, following opencode-dcp: 1.x hosts call
+ * `server`, v2 hosts call `setup`.
+ */
+export default { id: "auto-question", server: plugin, setup } satisfies PluginModule & {
+  setup: (ctx: unknown) => Promise<void>
+}

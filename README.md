@@ -58,21 +58,46 @@ Every failure mode (API errors, timeouts, unparsable responses, config problems)
 
 ## Install
 
+Requires opencode 1.x (tested with 1.19). opencode v2 is not supported yet: the plugin loads there but stays inactive and says so in the log.
+
+### From npm
+
 ```bash
-# 1. Symlink agents
-mkdir -p ~/.config/opencode/agents
-ln -s "$PWD/agents/autonomy.md" ~/.config/opencode/agents/autonomy.md
-ln -s "$PWD/agents/auto-question-ctx.md" ~/.config/opencode/agents/auto-question-ctx.md
-ln -s "$PWD/agents/auto-question-decide.md" ~/.config/opencode/agents/auto-question-decide.md
-
-# 2. Copy config (edit to taste)
-cp config/auto-question.jsonc ~/.config/opencode/auto-question.jsonc
-
-# 3. Register the plugin — add to the "plugin" array in ~/.config/opencode/opencode.jsonc:
-#    "/absolute/path/to/opencode-auto-question"
-
-# 4. Restart opencode
+opencode plugin -g @jflowers/opencode-auto-question
+export OPENROUTER_API_KEY=...   # or OPENCODE_API_KEY for Jev via OpenCode Zen
 ```
+
+Restart opencode. That's all: the plugin registers its agents itself, and without a config file it runs on the defaults.
+
+For a fleet, pin an exact version in the shared `~/.config/opencode/opencode.jsonc` so every machine runs the same code, and bump it deliberately:
+
+```jsonc
+"plugin": ["@jflowers/opencode-auto-question@0.2.0"]
+```
+
+### From source
+
+```bash
+git clone https://github.com/jflowers/opencode-auto-question.git
+cd opencode-auto-question
+bun install          # also builds dist/, which opencode loads
+```
+
+Add the absolute path of the checkout to the `"plugin"` array in `~/.config/opencode/opencode.jsonc` and restart opencode. After every `git pull`, run `bun install` (or `bun run build`) again; opencode loads `dist/`, not `src/`.
+
+### Agents
+
+The plugin registers three agents through opencode's config hook: `autonomy` (primary) and the hidden helpers `auto-question-ctx` and `auto-question-decide`, from [`agents/`](agents/). An agent you define yourself with the same name, in `opencode.json` or an `agents/*.md` file, always wins, so you can customize any of them by defining your own copy. Set `"registerAgents": false` in the config to register none.
+
+Earlier versions asked you to symlink these files into `~/.config/opencode/agents/`. Existing symlinks keep working (they count as your own definitions); you can delete them to follow the bundled versions instead.
+
+### Config (optional)
+
+```bash
+cp config/auto-question.jsonc ~/.config/opencode/auto-question.jsonc   # edit to taste
+```
+
+The file has a JSON schema (`$schema` at the top) for completion in editors. The plugin reads only this path.
 
 Switch a session to the `autonomy` agent, then trigger any question — the decision engine answers it.
 

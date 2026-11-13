@@ -2,9 +2,9 @@
  * Smoke test for the autonomous path: mocks fetch (Jev API) and the raw
  * HTTP client, then simulates a question in an "autonomy" session.
  * Verifies the two-pass orchestrator replies over the V1 question endpoint.
- * Run: OPENROUTER_API_KEY=smoke bun run smoke-autonomy.ts
+ * Run: OPENROUTER_API_KEY=smoke bun run scripts/smoke/smoke-autonomy.ts
  */
-import pluginModule from "./src/index"
+import pluginModule from "../../src/index"
 
 process.env.OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY ?? "smoke"
 

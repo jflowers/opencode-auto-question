@@ -2,9 +2,9 @@
  * Smoke test for the two-pass confidence gate: Jev pass 1 returns low
  * confidence, the context subagent runs in a temp child session, and Jev
  * pass 2 (with gathered context) answers confidently.
- * Run: bun run smoke-twopass.ts
+ * Run: bun run scripts/smoke/smoke-twopass.ts
  */
-import pluginModule from "./src/index"
+import pluginModule from "../../src/index"
 
 process.env.OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY ?? "smoke"
 

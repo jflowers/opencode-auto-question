@@ -26,6 +26,7 @@ jobs:
 
       # Fails if bun.lock is out of date with package.json, so CI tests the
       # committed dependency versions rather than whatever the ranges resolve to.
+      # Also builds dist/ through the prepare script.
       - name: Install
         run: bun install --frozen-lockfile
 
@@ -34,3 +35,7 @@ jobs:
 
       - name: Test
         run: bun test --coverage
+
+      # The install step's prepare script already built dist/.
+      - name: Verify package
+        run: bun run verify:package
