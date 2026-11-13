@@ -336,8 +336,10 @@ async function decideAndReply(deps: HandlerDeps, request: QuestionRequest, versi
   }
 
   // Pass 2: gather additional context with a subagent, combine with immediate
-  // context, and re-decide. A pass-2 decision supersedes pass 1; if pass 2
-  // errors, pass 1 is kept for thresholding.
+  // context, and re-decide. A pass-2 decision supersedes pass 1. The lower
+  // fallbackThreshold applies only to a pass-2 decision: when pass 2 is skipped
+  // (no context) or errors, nothing new was learned, so the pass-1 decision is
+  // still held to confidenceThreshold, which it already failed (issue #3).
   log("info", "low confidence — gathering context", {
     requestID: request.id,
     minConfidence: decision.ok ? minConfidence(decision) : null,
@@ -355,11 +357,14 @@ async function decideAndReply(deps: HandlerDeps, request: QuestionRequest, versi
     if (second.ok) {
       decision = second
       pass = "pass 2"
+    } else {
+      pass = "pass 1 (pass 2 failed)"
     }
     logDecision("pass 2", request.id, second)
   }
 
-  if (decision.ok && minConfidence(decision) >= config.fallbackThreshold) {
+  const threshold = pass === "pass 2" ? config.fallbackThreshold : config.confidenceThreshold
+  if (decision.ok && minConfidence(decision) >= threshold) {
     await reply(deps, request, decision, version, pass)
     if (config.sessionSummary) {
       await injectSummary(deps, request.sessionID, formatAutoAnswered(request, decision, pass))
@@ -367,17 +372,18 @@ async function decideAndReply(deps: HandlerDeps, request: QuestionRequest, versi
     return
   }
 
-  log("info", "below fallback threshold — leaving for human", {
+  log("info", "below threshold — leaving for human", {
     requestID: request.id,
+    pass,
     minConfidence: decision.ok ? minConfidence(decision) : null,
-    threshold: config.fallbackThreshold,
+    threshold,
   })
   if (config.sessionSummary) {
     await injectSummary(deps, request.sessionID, formatDeferred(
       request,
       decision,
       decision.ok ? "low confidence" : (decision.error ?? "decision failed"),
-      config.fallbackThreshold,
+      threshold,
     ))
   }
 }
@@ -388,8 +394,8 @@ async function decideAndReply(deps: HandlerDeps, request: QuestionRequest, versi
  * can override it.
  */
 export function humanGateReason(agent: string | undefined, request: QuestionRequest, config: Config): string | null {
-  // Defense in depth: loadConfig already rejects an `agents` list that
-  // overlaps humanGatedAgents.
+  // Defense in depth: loadConfig already drops human-gated agents from
+  // `agents`, so this only matters if that validation is bypassed.
   if (isHumanGatedAgent(agent, config.humanGatedAgents)) return `agent "${agent}" is human-gated`
   if (isHumanGatedRequest(request)) return "question carries the HUMAN_GATE: marker"
   return null
