@@ -1,0 +1,4 @@
+{
+  // every auto-answered agent is gated: all are dropped, the load still succeeds
+  "agents": ["curator"]
+}

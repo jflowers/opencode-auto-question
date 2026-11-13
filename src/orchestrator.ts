@@ -20,6 +20,22 @@ export interface HandlerDeps {
   projectDir: string
 }
 
+/** Upper bound on remembered request IDs; the oldest half is dropped past it. */
+export const SETTLED_MAX = 1000
+
+/**
+ * Remember a request as finished with (replied, rejected, or left for the
+ * human) so repeat deliveries of its question event are ignored.
+ */
+export function markSettled(settled: Set<string>, requestID: string): void {
+  settled.add(requestID)
+  if (settled.size <= SETTLED_MAX) return
+  for (const id of settled) {
+    settled.delete(id)
+    if (settled.size <= SETTLED_MAX / 2) break
+  }
+}
+
 function withTimeout<T>(work: Promise<T>, ms: number): Promise<T | "timeout"> {
   let timer: ReturnType<typeof setTimeout> | undefined
   const timeout = new Promise<"timeout">((resolve) => {
@@ -403,6 +419,11 @@ export async function handleQuestionAsked(
 
   const gate = humanGateReason(agent, request, config)
   if (gate) {
+    // Check and mark with no await in between: the same request can arrive
+    // again (question.asked and question.v2.asked, or a replay), and a second
+    // delivery may already be past the check at the top of this function.
+    if (settled.has(request.id)) return
+    markSettled(settled, request.id)
     log("info", "human gate — leaving for human", { requestID: request.id, reason: gate })
     if (config.sessionSummary) {
       await injectSummary(deps, request.sessionID, `[auto-question] Deferred to human — ${gate}`)
