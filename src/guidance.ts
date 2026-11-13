@@ -37,13 +37,14 @@ function readGuidanceDir(dir: string): Array<{ name: string; text: string }> {
 export function loadGuidance(projectDir: string, config: Config): string | null {
   if (!config.guidance.enabled) return null
 
-  const projectDirAbs = isAbsolute(config.guidance.projectPath)
-    ? config.guidance.projectPath
-    : join(projectDir, config.guidance.projectPath)
-  const docs = [
-    ...readGuidanceDir(expandHome(config.guidance.globalPath)),
-    ...readGuidanceDir(projectDirAbs),
-  ]
+  const { globalPath, inheritedGlobalPath, projectPath } = config.guidance
+  // Empty paths mean no guidance from that dir. Order: inherited (shared)
+  // global docs, the profile's own global docs, then the project's.
+  const dirs: string[] = []
+  if (inheritedGlobalPath) dirs.push(expandHome(inheritedGlobalPath))
+  if (globalPath) dirs.push(expandHome(globalPath))
+  if (projectPath) dirs.push(isAbsolute(projectPath) ? projectPath : join(projectDir, projectPath))
+  const docs = [...new Set(dirs)].flatMap(readGuidanceDir)
   if (docs.length === 0) return null
 
   let text = docs.map((d) => d.text).join("\n\n---\n\n")

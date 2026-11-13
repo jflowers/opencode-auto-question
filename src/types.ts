@@ -62,6 +62,47 @@ export interface GuidanceConfig {
   globalPath: string
   /** Total guidance characters passed to the decision agent. */
   maxChars: number
+  /**
+   * Set by configForAgent, never by the user: the base config's global
+   * guidance dir, loaded before the profile's own when the profile sets a
+   * different globalPath and keeps inheritGlobal (the default).
+   */
+  inheritedGlobalPath?: string
+}
+
+/** Config keys a profile may override. Everything else stays global. */
+export const PROFILE_KEYS = [
+  "engine",
+  "jev",
+  "llm",
+  "confidenceThreshold",
+  "fallbackThreshold",
+  "contextGathering",
+  "agentDecision",
+  "guidance",
+  "immediateContext",
+  "sessionSummary",
+  "handlerTimeoutMs",
+] as const
+
+export type ProfileKey = (typeof PROFILE_KEYS)[number]
+
+/**
+ * Per-agent overrides, deep-merged over the top-level config for questions
+ * from that agent. Human gates, `agents` and plugin-wide switches are not
+ * profile keys, so a profile cannot weaken a gate.
+ */
+export type ProfileConfig = {
+  [K in Exclude<ProfileKey, "guidance">]?: Config[K] extends object ? Partial<Config[K]> : Config[K]
+} & {
+  guidance?: Partial<Omit<GuidanceConfig, "inheritedGlobalPath">> & {
+    /**
+     * Also load the top-level global guidance dir (default true). false
+     * drops the shared docs: the profile sees only its own globalPath (if
+     * any) and the project's guidance.
+     */
+    inheritGlobal?: boolean
+  }
 }
 
 export interface Config {
@@ -98,6 +139,8 @@ export interface Config {
    * rest.
    */
   registerAgents: boolean
+  /** Per-agent overrides keyed by agent name (case-insensitive). */
+  profiles: Record<string, ProfileConfig>
 }
 
 export interface Decision {

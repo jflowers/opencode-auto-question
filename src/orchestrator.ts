@@ -1,5 +1,6 @@
 import type { Config, Decision, QuestionRequest } from "./types"
 import type { Plugin } from "@opencode-ai/plugin"
+import { configForAgent } from "./config"
 import { AgentTracker, isAutonomousAgent } from "./detect"
 import { gatherContext } from "./context"
 import { isHumanGatedAgent, isHumanGatedRequest } from "./gate"
@@ -469,7 +470,22 @@ export async function handleQuestionAsked(
     return
   }
 
+  // Human gates are checked against the top-level config, before any profile
+  // applies; profiles cannot set humanGatedAgents or agents.
   const gate = humanGateReason(agent, request, config)
+
+  // The agent's profile merged over the top-level config. It was validated at
+  // load; if it fails now, leave the question for the human rather than
+  // answer it under settings the profile was meant to replace.
+  let scoped: HandlerDeps
+  try {
+    scoped = { ...deps, config: configForAgent(config, agent) }
+  } catch (e) {
+    log("error", "profile config invalid — leaving for human", { requestID: request.id, agent, error: String(e) })
+    return
+  }
+  if (scoped.config !== config) log("info", "using profile", { requestID: request.id, agent })
+
   if (gate) {
     // Check and mark with no await in between: the same request can arrive
     // again (question.asked and question.v2.asked, or a replay), and a second
@@ -477,16 +493,17 @@ export async function handleQuestionAsked(
     if (settled.has(request.id)) return
     markSettled(settled, request.id)
     log("info", "human gate — leaving for human", { requestID: request.id, reason: gate })
-    await settle(deps, request, version, { kind: "gated", reason: gate })
+    await settle(scoped, request, version, { kind: "gated", reason: gate })
     return
   }
 
   // The deciding work is not cancelled on timeout, but it has no side effects:
   // a decision that arrives late is dropped rather than replied.
-  let outcome = await withTimeout(decideOutcome(deps, request), config.handlerTimeoutMs)
+  const timeoutMs = scoped.config.handlerTimeoutMs
+  let outcome = await withTimeout(decideOutcome(scoped, request), timeoutMs)
   if (outcome === "timeout") {
     log("warn", "handler timed out — leaving for human", { requestID: request.id })
-    outcome = { kind: "timeout", timeoutMs: config.handlerTimeoutMs }
+    outcome = { kind: "timeout", timeoutMs }
   }
-  await settle(deps, request, version, outcome)
+  await settle(scoped, request, version, outcome)
 }

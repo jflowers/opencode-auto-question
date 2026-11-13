@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { dirname, isAbsolute, join, resolve } from "node:path"
-import type { Config } from "./types"
+import { PROFILE_KEYS, type Config, type ProfileConfig } from "./types"
 import { BUILTIN_HUMAN_GATED_AGENTS, gatedAgentOverlap, isHumanGatedAgent, mergeGatedAgents } from "./gate"
 
 export class ConfigError extends Error {}
@@ -82,6 +82,7 @@ export const DEFAULT_CONFIG: Config = {
   handlerTimeoutMs: 120_000,
   verbose: false,
   registerAgents: true,
+  profiles: {},
 }
 
 /**
@@ -198,14 +199,24 @@ export function readConfigFile(source: ConfigSource): Record<string, unknown> | 
   if (!isPlainObject(raw)) throw new ConfigError(`config root must be an object (${path})`)
 
   const values = interpolateEnv(raw) as Record<string, unknown>
-  const guidance = values.guidance
-  if (isPlainObject(guidance) && typeof guidance.globalPath === "string") {
-    const p = guidance.globalPath
-    if (p.length > 0 && !isAbsolute(p) && p !== "~" && !p.startsWith("~/")) {
-      values.guidance = { ...guidance, globalPath: resolve(dirname(path), p) }
+  const dir = dirname(path)
+  resolveGlobalPath(values, dir)
+  if (isPlainObject(values.profiles)) {
+    for (const profile of Object.values(values.profiles)) {
+      if (isPlainObject(profile)) resolveGlobalPath(profile, dir)
     }
   }
   return values
+}
+
+/** Resolve a relative `guidance.globalPath` in `block` against `dir`, in place. */
+function resolveGlobalPath(block: Record<string, unknown>, dir: string): void {
+  const guidance = block.guidance
+  if (!isPlainObject(guidance) || typeof guidance.globalPath !== "string") return
+  const p = guidance.globalPath
+  if (p.length > 0 && !isAbsolute(p) && p !== "~" && !p.startsWith("~/")) {
+    block.guidance = { ...guidance, globalPath: resolve(dir, p) }
+  }
 }
 
 /**
@@ -252,26 +263,38 @@ export function loadConfig(
         (config.agents.length === 0 ? " No auto-answered agents remain." : ""),
     )
   }
-  if (config.engine !== "jev" && config.engine !== "llm" && config.engine !== "auto") {
-    throw new ConfigError("engine must be one of: jev, llm, auto")
-  }
-  config.confidenceThreshold = clamp01(config.confidenceThreshold, 0.6)
-  config.fallbackThreshold = clamp01(config.fallbackThreshold, 0.35)
-  if (typeof config.handlerTimeoutMs !== "number" || config.handlerTimeoutMs < 1000) {
-    config.handlerTimeoutMs = DEFAULT_CONFIG.handlerTimeoutMs
-  }
   if (typeof config.verbose !== "boolean") config.verbose = false
   if (typeof config.registerAgents !== "boolean") throw new ConfigError("registerAgents must be a boolean")
-  if (typeof config.immediateContext !== "boolean") config.immediateContext = true
-  if (typeof config.sessionSummary !== "boolean") config.sessionSummary = true
+  normalizeBehavior(config, "")
+
+  config.profiles = normalizeProfiles(config, warn)
+  return config
+}
+
+/**
+ * Validate and repair the keys a profile can override, in place. Throws
+ * ConfigError for values that cannot be repaired; `prefix` names the profile
+ * in the message.
+ */
+function normalizeBehavior(c: Config, prefix: string): void {
+  if (c.engine !== "jev" && c.engine !== "llm" && c.engine !== "auto") {
+    throw new ConfigError(prefix + "engine must be one of: jev, llm, auto")
+  }
+  c.confidenceThreshold = clamp01(c.confidenceThreshold, 0.6)
+  c.fallbackThreshold = clamp01(c.fallbackThreshold, 0.35)
+  if (typeof c.handlerTimeoutMs !== "number" || c.handlerTimeoutMs < 1000) {
+    c.handlerTimeoutMs = DEFAULT_CONFIG.handlerTimeoutMs
+  }
+  if (typeof c.immediateContext !== "boolean") c.immediateContext = true
+  if (typeof c.sessionSummary !== "boolean") c.sessionSummary = true
 
   for (const engine of ["jev", "llm"] as const) {
-    const block = config[engine]
+    const block = c[engine]
     if (typeof block.baseUrl !== "string" || !block.baseUrl.startsWith("http")) {
-      throw new ConfigError(`${engine}.baseUrl must be an http(s) URL`)
+      throw new ConfigError(prefix + `${engine}.baseUrl must be an http(s) URL`)
     }
     if (typeof block.model !== "string" || block.model.length === 0) {
-      throw new ConfigError(`${engine}.model must be a non-empty string`)
+      throw new ConfigError(prefix + `${engine}.model must be a non-empty string`)
     }
     if (typeof block.apiKey !== "string") block.apiKey = ""
     if (typeof block.timeoutMs !== "number" || block.timeoutMs < 1000) {
@@ -279,33 +302,103 @@ export function loadConfig(
     }
   }
 
-  const cg = config.contextGathering
+  const cg = c.contextGathering
   if (typeof cg.agent !== "string" || cg.agent.length === 0) {
-    throw new ConfigError("contextGathering.agent must be a non-empty string")
+    throw new ConfigError(prefix + "contextGathering.agent must be a non-empty string")
   }
   if (typeof cg.timeoutMs !== "number" || cg.timeoutMs < 1000) {
     cg.timeoutMs = DEFAULT_CONFIG.contextGathering.timeoutMs
   }
 
-  const ad = config.agentDecision
+  const ad = c.agentDecision
   if (typeof ad.agent !== "string" || ad.agent.length === 0) {
-    throw new ConfigError("agentDecision.agent must be a non-empty string")
+    throw new ConfigError(prefix + "agentDecision.agent must be a non-empty string")
   }
   if (typeof ad.timeoutMs !== "number" || ad.timeoutMs < 1000) {
     ad.timeoutMs = DEFAULT_CONFIG.agentDecision.timeoutMs
   }
 
-  const g = config.guidance
+  const g = c.guidance
   if (typeof g.enabled !== "boolean") g.enabled = true
-  if (typeof g.projectPath !== "string" || g.projectPath.length === 0) {
-    g.projectPath = DEFAULT_CONFIG.guidance.projectPath
-  }
-  if (typeof g.globalPath !== "string" || g.globalPath.length === 0) {
-    g.globalPath = DEFAULT_CONFIG.guidance.globalPath
-  }
+  // An empty path means no guidance from that dir.
+  if (typeof g.projectPath !== "string") g.projectPath = DEFAULT_CONFIG.guidance.projectPath
+  if (typeof g.globalPath !== "string") g.globalPath = DEFAULT_CONFIG.guidance.globalPath
+  if (g.inheritedGlobalPath !== undefined && typeof g.inheritedGlobalPath !== "string") delete g.inheritedGlobalPath
   if (typeof g.maxChars !== "number" || g.maxChars < 1000) {
     g.maxChars = DEFAULT_CONFIG.guidance.maxChars
   }
+}
 
-  return config
+/**
+ * Check `profiles` at load: drop keys a profile may not set (with a warning),
+ * and validate each profile merged over the base so a bad value fails the
+ * load rather than the first question from that agent.
+ */
+function normalizeProfiles(config: Config, warn: (message: string) => void): Record<string, ProfileConfig> {
+  const raw: unknown = config.profiles
+  if (raw === undefined) return {}
+  if (!isPlainObject(raw)) throw new ConfigError("profiles must be an object keyed by agent name")
+  const allowed = new Set<string>(PROFILE_KEYS)
+  const out: Record<string, ProfileConfig> = {}
+  const seen = new Set<string>()
+  for (const [name, value] of Object.entries(raw)) {
+    if (!isPlainObject(value)) throw new ConfigError(`profiles.${name} must be an object`)
+    const key = name.toLowerCase()
+    if (seen.has(key)) throw new ConfigError(`profiles has more than one entry for agent "${name}" (names are case-insensitive)`)
+    seen.add(key)
+    const kept: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(value)) {
+      if (allowed.has(k)) kept[k] = v
+      else warn(`profiles.${name}.${k} is not a profile setting and was ignored (profiles can set: ${PROFILE_KEYS.join(", ")})`)
+    }
+    const guidance = kept.guidance
+    if (isPlainObject(guidance) && "inheritGlobal" in guidance && typeof guidance.inheritGlobal !== "boolean") {
+      throw new ConfigError(`profiles.${name}.guidance.inheritGlobal must be a boolean`)
+    }
+    if (isPlainObject(guidance) && "inheritedGlobalPath" in guidance) {
+      const { inheritedGlobalPath: _, ...rest } = guidance
+      kept.guidance = rest
+      warn(`profiles.${name}.guidance.inheritedGlobalPath is internal and was ignored`)
+    }
+    if (isHumanGatedAgent(name, config.humanGatedAgents)) {
+      warn(`profiles.${name}: "${name}" is human-gated, so its questions are never auto-answered and this profile is unused`)
+    } else if (!config.agents.some((a) => a.toLowerCase() === key)) {
+      warn(`profiles.${name}: "${name}" is not in "agents", so this profile is unused`)
+    }
+    // Validate the merged result now (throws with the profile named).
+    resolveProfile(config, kept as ProfileConfig, `profiles.${name}: `)
+    out[name] = kept as ProfileConfig
+  }
+  return out
+}
+
+function resolveProfile(base: Config, profile: ProfileConfig, prefix: string): Config {
+  const { inheritGlobal, ...guidance } = profile.guidance ?? {}
+  const merged = mergeConfig(structuredClone(base), {
+    ...profile,
+    ...(profile.guidance ? { guidance } : {}),
+  } as Record<string, unknown>)
+  merged.profiles = {}
+  const ownGlobal = typeof guidance.globalPath === "string" && guidance.globalPath !== base.guidance.globalPath
+  if (inheritGlobal === false) {
+    // Only the profile's own global dir, or none at all.
+    if (!ownGlobal) merged.guidance.globalPath = ""
+  } else if (ownGlobal) {
+    merged.guidance.inheritedGlobalPath = base.guidance.globalPath
+  }
+  normalizeBehavior(merged, prefix)
+  return merged
+}
+
+/**
+ * The config for questions from `agent`: its profile (matched
+ * case-insensitively) merged over the top-level config, or the top-level
+ * config itself when it has none. The result has no profiles.
+ */
+export function configForAgent(config: Config, agent: string | undefined): Config {
+  if (!agent) return config
+  const key = agent.toLowerCase()
+  const name = Object.keys(config.profiles ?? {}).find((n) => n.toLowerCase() === key)
+  if (name === undefined) return config
+  return resolveProfile(config, config.profiles[name]!, `profiles.${name}: `)
 }

@@ -190,6 +190,146 @@
       "type": "boolean",
       "default": true,
       "description": "Register the bundled autonomy, auto-question-ctx and auto-question-decide agents. Settings you give an agent of the same name win; the bundled definition fills in the rest."
+    },
+    "profiles": {
+      "type": "object",
+      "default": {},
+      "description": "Per-agent overrides keyed by agent name (case-insensitive), deep-merged over the top-level settings for that agent's questions only. Human gates, agents and plugin-wide switches cannot be set here.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "engine": {
+            "enum": [
+              "jev",
+              "llm",
+              "auto"
+            ],
+            "description": "Decision engine: jev, llm (JSON-contract chat completion), or auto (jev first, llm fallback)."
+          },
+          "jev": {
+            "type": "object",
+            "description": "Jev (TypeSafe decision model) carrier. With an empty apiKey, the carrier is auto-discovered from OPENCODE_API_KEY, then OPENROUTER_API_KEY.",
+            "additionalProperties": false,
+            "properties": {
+              "model": {
+                "type": "string"
+              },
+              "baseUrl": {
+                "type": "string",
+                "description": "http(s) URL; {env:VAR} is interpolated"
+              },
+              "apiKey": {
+                "type": "string",
+                "description": "API key, usually \"{env:VAR}\""
+              },
+              "timeoutMs": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          },
+          "llm": {
+            "type": "object",
+            "description": "OpenAI-compatible chat-completions engine.",
+            "additionalProperties": false,
+            "properties": {
+              "baseUrl": {
+                "type": "string",
+                "description": "http(s) URL; {env:VAR} is interpolated"
+              },
+              "apiKey": {
+                "type": "string",
+                "description": "API key, usually \"{env:VAR}\""
+              },
+              "model": {
+                "type": "string"
+              },
+              "timeoutMs": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          },
+          "confidenceThreshold": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Pass 1 answers at or above this are sent immediately. A decision that pass 2 did not re-make is held to this threshold."
+          },
+          "fallbackThreshold": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Applies only to a decision re-made in pass 2 with gathered context; below it goes to the human."
+          },
+          "contextGathering": {
+            "type": "object",
+            "description": "Pass 2 context-gathering subagent.",
+            "additionalProperties": false,
+            "properties": {
+              "agent": {
+                "type": "string"
+              },
+              "timeoutMs": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          },
+          "agentDecision": {
+            "type": "object",
+            "description": "Pass 0 decision agent, used when project guidance exists.",
+            "additionalProperties": false,
+            "properties": {
+              "agent": {
+                "type": "string"
+              },
+              "timeoutMs": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          },
+          "guidance": {
+            "type": "object",
+            "description": "Overrides for the top-level guidance block. A relative globalPath resolves against the config file's directory; an empty path means no guidance from that dir.",
+            "additionalProperties": false,
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "projectPath": {
+                "type": "string"
+              },
+              "globalPath": {
+                "type": "string"
+              },
+              "maxChars": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "inheritGlobal": {
+                "type": "boolean",
+                "description": "Also load the top-level global guidance dir before this profile's own (default true). false: only this profile's globalPath, if set, and the project's guidance."
+              }
+            }
+          },
+          "immediateContext": {
+            "type": "boolean",
+            "description": "Give the engine the assistant text that led to the question."
+          },
+          "sessionSummary": {
+            "type": "boolean",
+            "description": "Post a hidden summary to the session after answering or deferring."
+          },
+          "handlerTimeoutMs": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Hard cap for one auto-answer attempt."
+          }
+        }
+      }
     }
   }
 }

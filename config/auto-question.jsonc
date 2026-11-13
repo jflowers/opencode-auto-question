@@ -103,5 +103,18 @@
   "sessionSummary": true,
 
   // Debug logging to ~/.local/share/opencode-auto-question/log.txt
-  "verbose": false
+  "verbose": false,
+
+  // Per-agent overrides, keyed by agent name (case-insensitive). Each is
+  // deep-merged over the settings above for that agent's questions only.
+  // Allowed keys: engine, jev, llm, confidenceThreshold, fallbackThreshold,
+  // contextGathering, agentDecision, guidance (plus guidance.inheritGlobal),
+  // immediateContext, sessionSummary, handlerTimeoutMs. Human gates always
+  // apply. Example:
+  //   "hud-supervisor": {
+  //     "guidance": { "globalPath": "auto-question/hud-guidance", "projectPath": "", "inheritGlobal": false },
+  //     "confidenceThreshold": 0.7,
+  //     "llm": { "model": "qwen/qwen3-235b-a22b" }
+  //   }
+  "profiles": {}
 }

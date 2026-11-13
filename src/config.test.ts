@@ -4,6 +4,7 @@ import { homedir, tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import {
   DEFAULT_CONFIG,
+  configForAgent,
   configSources,
   defaultConfigPath,
   interpolateEnv,
@@ -229,5 +230,143 @@ describe("loadConfig with several sources", () => {
     const local = write("local/auto-question.jsonc", { llm: { apiKey: 5, timeoutMs: 1 } })
     loadConfig([{ path: local, required: false }])
     expect(DEFAULT_CONFIG).toEqual(before)
+  })
+})
+
+describe("profiles", () => {
+  let dir: string
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "aq-profiles-"))
+  })
+  afterEach(() => rmSync(dir, { recursive: true, force: true }))
+
+  const load = (value: unknown, warnings: string[] = []) => {
+    const path = join(dir, "cfg", "auto-question.jsonc")
+    mkdirSync(dirname(path), { recursive: true })
+    writeFileSync(path, JSON.stringify(value))
+    return loadConfig([{ path, required: false }], (m) => warnings.push(m))
+  }
+
+  const base = {
+    agents: ["autonomy", "hud-supervisor"],
+    confidenceThreshold: 0.6,
+    llm: { model: "glm-5.3" },
+    guidance: { globalPath: "/shared/guidance" },
+  }
+
+  test("default config has no profiles and agents use it unchanged", () => {
+    const config = load({})
+    expect(config.profiles).toEqual({})
+    expect(configForAgent(config, "autonomy")).toBe(config)
+    expect(configForAgent(config, undefined)).toBe(config)
+  })
+
+  test("a profile overrides only its own agent, deep-merging nested blocks", () => {
+    const config = load({
+      ...base,
+      profiles: { "hud-supervisor": { confidenceThreshold: 0.7, fallbackThreshold: 0.5, llm: { model: "qwen" } } },
+    })
+    const hud = configForAgent(config, "hud-supervisor")
+    expect(hud.confidenceThreshold).toBe(0.7)
+    expect(hud.fallbackThreshold).toBe(0.5)
+    expect(hud.llm.model).toBe("qwen")
+    expect(hud.llm.baseUrl).toBe(DEFAULT_CONFIG.llm.baseUrl)
+    expect(hud.profiles).toEqual({})
+    const autonomy = configForAgent(config, "autonomy")
+    expect(autonomy).toBe(config)
+    expect(autonomy.confidenceThreshold).toBe(0.6)
+    expect(autonomy.llm.model).toBe("glm-5.3")
+  })
+
+  test("profile names match agents case-insensitively", () => {
+    const config = load({ ...base, profiles: { "HUD-Supervisor": { confidenceThreshold: 0.9 } } })
+    expect(configForAgent(config, "hud-supervisor").confidenceThreshold).toBe(0.9)
+  })
+
+  test("two profiles for the same agent in different case are rejected", () => {
+    expect(() => load({ ...base, profiles: { a: {}, A: {} } })).toThrow(/more than one entry/)
+  })
+
+  test("keys a profile may not set are dropped with a warning", () => {
+    const warnings: string[] = []
+    const config = load(
+      { ...base, profiles: { "hud-supervisor": { humanGatedAgents: [], agents: ["curator"], enabled: false } } },
+      warnings,
+    )
+    expect(config.profiles["hud-supervisor"]).toEqual({})
+    expect(warnings.filter((w) => w.includes("not a profile setting"))).toHaveLength(3)
+    const hud = configForAgent(config, "hud-supervisor")
+    expect(hud.humanGatedAgents).toEqual(["curator"])
+    expect(hud.agents).toEqual(["autonomy", "hud-supervisor"])
+    expect(hud.enabled).toBe(true)
+  })
+
+  test("an invalid profile value fails the load and names the profile", () => {
+    expect(() => load({ ...base, profiles: { "hud-supervisor": { engine: "gpt" } } })).toThrow(
+      /profiles\.hud-supervisor: engine must be one of/,
+    )
+  })
+
+  test("profile values are repaired like top-level ones", () => {
+    const config = load({ ...base, profiles: { "hud-supervisor": { confidenceThreshold: 4, handlerTimeoutMs: 5 } } })
+    const hud = configForAgent(config, "hud-supervisor")
+    expect(hud.confidenceThreshold).toBe(1)
+    expect(hud.handlerTimeoutMs).toBe(DEFAULT_CONFIG.handlerTimeoutMs)
+  })
+
+  test("a profile for an agent not in agents, or a gated one, warns that it is unused", () => {
+    const warnings: string[] = []
+    load({ ...base, profiles: { reviewer: {}, curator: {} } }, warnings)
+    expect(warnings.some((w) => w.includes("profiles.reviewer") && w.includes("not in"))).toBe(true)
+    expect(warnings.some((w) => w.includes("profiles.curator") && w.includes("human-gated"))).toBe(true)
+  })
+
+  describe("guidance", () => {
+    test("a profile's own globalPath adds to the shared one by default", () => {
+      const config = load({ ...base, profiles: { "hud-supervisor": { guidance: { globalPath: "/hud/guidance" } } } })
+      const g = configForAgent(config, "hud-supervisor").guidance
+      expect(g.inheritedGlobalPath).toBe("/shared/guidance")
+      expect(g.globalPath).toBe("/hud/guidance")
+    })
+
+    test("inheritGlobal false keeps only the profile's own globalPath", () => {
+      const config = load({
+        ...base,
+        profiles: { "hud-supervisor": { guidance: { globalPath: "/hud/guidance", inheritGlobal: false } } },
+      })
+      const g = configForAgent(config, "hud-supervisor").guidance
+      expect(g.inheritedGlobalPath).toBeUndefined()
+      expect(g.globalPath).toBe("/hud/guidance")
+      expect("inheritGlobal" in g).toBe(false)
+    })
+
+    test("inheritGlobal false without a globalPath loads no global guidance", () => {
+      const config = load({ ...base, profiles: { "hud-supervisor": { guidance: { inheritGlobal: false } } } })
+      expect(configForAgent(config, "hud-supervisor").guidance.globalPath).toBe("")
+    })
+
+    test("a profile without guidance settings uses the shared dir as-is", () => {
+      const config = load({ ...base, profiles: { "hud-supervisor": { confidenceThreshold: 0.7 } } })
+      const g = configForAgent(config, "hud-supervisor").guidance
+      expect(g.globalPath).toBe("/shared/guidance")
+      expect(g.inheritedGlobalPath).toBeUndefined()
+    })
+
+    test("a relative profile globalPath resolves against the config file's directory", () => {
+      const config = load({ ...base, profiles: { "hud-supervisor": { guidance: { globalPath: "hud" } } } })
+      expect(configForAgent(config, "hud-supervisor").guidance.globalPath).toBe(join(dir, "cfg", "hud"))
+    })
+
+    test("an empty projectPath is kept, meaning no project guidance", () => {
+      const config = load({ ...base, profiles: { "hud-supervisor": { guidance: { projectPath: "" } } } })
+      expect(configForAgent(config, "hud-supervisor").guidance.projectPath).toBe("")
+      expect(config.guidance.projectPath).toBe(DEFAULT_CONFIG.guidance.projectPath)
+    })
+
+    test("a non-boolean inheritGlobal fails the load", () => {
+      expect(() => load({ ...base, profiles: { "hud-supervisor": { guidance: { inheritGlobal: "no" } } } })).toThrow(
+        /inheritGlobal must be a boolean/,
+      )
+    })
   })
 })
