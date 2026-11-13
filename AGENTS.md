@@ -16,8 +16,13 @@ confidence gate with subagent context gathering, human fallback.
 - Agents: `agents/*.md`, registered by the plugin's `config` hook
   (`src/agents.ts`); user-defined agents of the same name win.
 - Log: `~/.local/share/opencode-auto-question/log.txt`
-- Release: bump `version`, update `CHANGELOG.md`, push tag `v<version>`;
-  `.github/workflows/publish.yml` publishes to npm.
+- Release: in a PR, bump `version` in `package.json` and move the
+  `CHANGELOG.md` entries under the new version. After it merges, push tag
+  `v<version>` from `main`; `.github/workflows/publish.yml` publishes to npm.
+  It authenticates through npm trusted publishing (OIDC: package settings on
+  npmjs.com trust `jflowers/opencode-auto-question` + `publish.yml`), so no
+  npm token exists or is needed. The package's publishing access disallows
+  tokens; publishing by hand needs the maintainer's 2FA.
 
 Verify changes with `bun run typecheck && bun test && bun run build && bun run verify:package`
 (CI runs all of them on every pull request: `.github/workflows/ci.yml`).

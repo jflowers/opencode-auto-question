@@ -72,7 +72,7 @@ Restart opencode. That's all: the plugin registers its agents itself, and withou
 For a fleet, pin an exact version in the shared `~/.config/opencode/opencode.jsonc` so every machine runs the same code, and bump it deliberately:
 
 ```jsonc
-"plugin": ["opencode-auto-question@0.1.0"]
+"plugin": ["opencode-auto-question@0.1.1"]
 ```
 
 ### From source
