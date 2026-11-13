@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-13
+
 ### Added
 - `$OPENCODE_CONFIG_DIR/auto-question.jsonc` is loaded after the global file
   and deep-merged over it, so a tool can ship a self-contained opencode setup
@@ -79,7 +81,8 @@ First release on npm, as `opencode-auto-question`.
   every question for a human: v2 replaced question events with forms, and its
   plugin API does not expose answering a form.
 
-[Unreleased]: https://github.com/jflowers/opencode-auto-question/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/jflowers/opencode-auto-question/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/jflowers/opencode-auto-question/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/jflowers/opencode-auto-question/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/jflowers/opencode-auto-question/compare/47de2ca...v0.1.1
 [0.1.0]: https://github.com/jflowers/opencode-auto-question/tree/47de2ca
