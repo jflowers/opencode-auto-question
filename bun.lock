@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "@jflowers/opencode-auto-question",
+      "name": "opencode-auto-question",
       "devDependencies": {
         "@opencode-ai/plugin": "1.19.4",
         "@types/bun": "^1.4.3",
