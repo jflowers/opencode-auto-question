@@ -54,20 +54,62 @@ describe("registerAgents", () => {
 
   test("adds every agent to an empty config", () => {
     const config: { agent?: Record<string, unknown> } = {}
-    expect(registerAgents(config, agents)).toEqual({ added: ["a", "b"], kept: [] })
+    expect(registerAgents(config, agents)).toEqual({ added: ["a", "b"], filledIn: [] })
     expect(config.agent).toEqual({ a: { prompt: "A" }, b: { prompt: "B", mode: "subagent" } })
   })
 
-  test("never replaces an agent the user defines", () => {
-    const mine = { prompt: "mine", model: "x/y" }
-    const config = { agent: { a: mine } as Record<string, unknown> }
-    expect(registerAgents(config, agents)).toEqual({ added: ["b"], kept: ["a"] })
-    expect(config.agent.a).toBe(mine)
+  test("a user's settings win over the bundled ones", () => {
+    const config = { agent: { a: { prompt: "mine", model: "x/y" } } as Record<string, unknown> }
+    expect(registerAgents(config, agents)).toEqual({ added: ["b"], filledIn: ["a"] })
+    expect(config.agent.a).toEqual({ prompt: "mine", model: "x/y" })
+  })
+
+  test("a permissions-only override keeps the bundled prompt, mode and other permissions", () => {
+    // The shape of a project overlay's .opencode/opencode.json (dewey,
+    // unbound-force, ...): it only narrows external_directory for autonomy.
+    const overlay = {
+      permission: {
+        external_directory: { "*": "deny", "~/Projects/github/unbound-force/dewey/**": "allow", "/tmp/**": "allow" },
+      },
+    }
+    const config = { agent: { autonomy: overlay } as Record<string, unknown> }
+    const bundled = loadBundledAgents()
+    expect(registerAgents(config, { autonomy: bundled.autonomy! })).toEqual({ added: [], filledIn: ["autonomy"] })
+    expect(config.agent.autonomy).toEqual({
+      description: bundled.autonomy!.description,
+      mode: "primary",
+      prompt: bundled.autonomy!.prompt,
+      permission: {
+        question: "allow",
+        plan_enter: "allow",
+        external_directory: overlay.permission.external_directory,
+      },
+    })
+  })
+
+  test("nested settings merge key by key, and the user's value wins on a conflict", () => {
+    const config = {
+      agent: { a: { permission: { question: "deny", edit: "ask" } } } as Record<string, unknown>,
+    }
+    registerAgents(config, { a: { prompt: "A", permission: { question: "allow", plan_enter: "allow" } } })
+    expect(config.agent.a).toEqual({
+      prompt: "A",
+      permission: { question: "deny", plan_enter: "allow", edit: "ask" },
+    })
+  })
+
+  test("a disabled agent stays disabled", () => {
+    const config = { agent: { a: { disable: true } } as Record<string, unknown> }
+    registerAgents(config, agents)
+    expect(config.agent.a).toEqual({ prompt: "A", disable: true })
   })
 
   test("registered definitions are copies, not the shared originals", () => {
+    const shared = { a: { prompt: "A", permission: { question: "allow" } } }
     const config: { agent?: Record<string, unknown> } = {}
-    registerAgents(config, agents)
-    expect(config.agent!.a).not.toBe(agents.a)
+    registerAgents(config, shared)
+    expect(config.agent!.a).not.toBe(shared.a)
+    ;(config.agent!.a as { permission: Record<string, string> }).permission.question = "deny"
+    expect(shared.a.permission.question).toBe("allow")
   })
 })

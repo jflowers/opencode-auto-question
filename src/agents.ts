@@ -6,8 +6,9 @@ import { fileURLToPath } from "node:url"
  * The agents this plugin ships in `agents/*.md`. The plugin registers them
  * through opencode's `config` hook, so an npm install needs no symlinks.
  * Markdown agents (global `~/.config/opencode/agents/` and project
- * `.opencode/agents/`) are already in the config when the hook runs, so a
- * user's own definition of the same name always wins.
+ * `.opencode/agents/`) and `agent` entries from opencode.json are already in
+ * the config when the hook runs. A user's settings for an agent of the same
+ * name win; the bundled definition only fills in what they leave out.
  */
 export const BUNDLED_AGENTS = ["autonomy", "auto-question-ctx", "auto-question-decide"] as const
 
@@ -90,24 +91,46 @@ export function loadBundledAgents(dir = bundledAgentsDir()): Record<string, Agen
   return out
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+}
+
+/** `override` merged over `base`, recursively for objects; override wins. */
+function fillIn(base: Record<string, unknown>, override: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...base }
+  for (const [key, value] of Object.entries(override)) {
+    out[key] = isPlainObject(value) && isPlainObject(out[key]) ? fillIn(out[key] as Record<string, unknown>, value) : value
+  }
+  return out
+}
+
 /**
- * Add each bundled agent the config doesn't already define. Returns the names
- * added and the names skipped because the user defines them.
+ * Register the bundled agents. An agent the config doesn't define is added
+ * as is. An agent it does define keeps every setting it has, and the bundled
+ * definition fills in the rest: a project config that only narrows
+ * `autonomy`'s permissions (e.g. `external_directory`) still gets its prompt,
+ * mode and `question: allow`. This is how opencode itself layers an
+ * opencode.json entry over a markdown agent of the same name.
+ *
+ * Returns the names added and the names filled in under an existing entry.
  */
 export function registerAgents(
   config: { agent?: Record<string, unknown> },
   agents: Record<string, AgentDefinition>,
-): { added: string[]; kept: string[] } {
+): { added: string[]; filledIn: string[] } {
   config.agent ??= {}
   const added: string[] = []
-  const kept: string[] = []
+  const filledIn: string[] = []
   for (const [name, def] of Object.entries(agents)) {
-    if (config.agent[name] !== undefined) {
-      kept.push(name)
-      continue
+    const bundled = structuredClone(def) as unknown as Record<string, unknown>
+    const existing = config.agent[name]
+    if (existing === undefined || existing === null) {
+      config.agent[name] = bundled
+      added.push(name)
+    } else if (isPlainObject(existing)) {
+      config.agent[name] = fillIn(bundled, existing)
+      filledIn.push(name)
     }
-    config.agent[name] = { ...def }
-    added.push(name)
   }
-  return { added, kept }
+  return { added, filledIn }
 }

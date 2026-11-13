@@ -189,7 +189,7 @@
     "registerAgents": {
       "type": "boolean",
       "default": true,
-      "description": "Register the bundled autonomy, auto-question-ctx and auto-question-decide agents. A user-defined agent of the same name always wins."
+      "description": "Register the bundled autonomy, auto-question-ctx and auto-question-decide agents. Settings you give an agent of the same name win; the bundled definition fills in the rest."
     }
   }
 }

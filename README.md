@@ -72,7 +72,7 @@ Restart opencode. That's all: the plugin registers its agents itself, and withou
 For a fleet, pin an exact version in the shared `~/.config/opencode/opencode.jsonc` so every machine runs the same code, and bump it deliberately:
 
 ```jsonc
-"plugin": ["opencode-auto-question@0.1.1"]
+"plugin": ["opencode-auto-question@0.1.2"]
 ```
 
 ### From source
@@ -87,9 +87,9 @@ Add the absolute path of the checkout to the `"plugin"` array in `~/.config/open
 
 ### Agents
 
-The plugin registers three agents through opencode's config hook: `autonomy` (primary) and the hidden helpers `auto-question-ctx` and `auto-question-decide`, from [`agents/`](agents/). An agent you define yourself with the same name, in `opencode.json` or an `agents/*.md` file, always wins, so you can customize any of them by defining your own copy. Set `"registerAgents": false` in the config to register none.
+The plugin registers three agents through opencode's config hook: `autonomy` (primary) and the hidden helpers `auto-question-ctx` and `auto-question-decide`, from [`agents/`](agents/). If you configure an agent of the same name yourself, in `opencode.json` (global or project) or an `agents/*.md` file, your settings win and the bundled definition fills in only what you leave out. A project that only narrows `autonomy`'s permissions, for example `external_directory`, keeps the bundled prompt, mode and `question: allow`. To change a bundled setting, set that key; to replace an agent wholesale, define every key you care about or set `"registerAgents": false` to register none.
 
-Earlier versions asked you to symlink these files into `~/.config/opencode/agents/`. Existing symlinks keep working (they count as your own definitions); you can delete them to follow the bundled versions instead.
+Earlier versions asked you to symlink these files into `~/.config/opencode/agents/`. Existing symlinks keep working (their settings win); you can delete them to follow the bundled versions instead. Before 0.1.2, deleting them broke `autonomy` in any project whose config set a partial `autonomy` entry (it lost its prompt and could not ask questions), so upgrade before removing them.
 
 ### Config (optional)
 

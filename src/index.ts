@@ -107,8 +107,8 @@ const plugin: Plugin = async (input) => {
     config: async (opencodeConfig) => {
       if (!bundledAgents) return
       try {
-        const { added, kept } = registerAgents(opencodeConfig as { agent?: Record<string, unknown> }, bundledAgents)
-        log("info", "bundled agents", { added, keptUserDefined: kept })
+        const { added, filledIn } = registerAgents(opencodeConfig as { agent?: Record<string, unknown> }, bundledAgents)
+        log("info", "bundled agents", { added, filledInUnderUserSettings: filledIn })
       } catch (e) {
         log("error", "agent registration failed", { error: String(e) })
       }

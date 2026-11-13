@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-11-13
+
+### Fixed
+- A config entry for a bundled agent no longer replaces the whole agent. Its
+  settings win and the bundled definition fills in the rest, the way opencode
+  layers opencode.json over a markdown agent. Before, a project config that
+  only narrowed `autonomy`'s `external_directory` permission (as the
+  unbound-force and zero-dot-force overlays do) left `autonomy` without its
+  prompt, in mode `all`, and with `question` denied once the old
+  `~/.config/opencode/agents/` symlinks were removed.
+
 ## [0.1.1] - 2026-11-13
 
 ### Changed
@@ -43,6 +54,7 @@ First release on npm, as `opencode-auto-question`.
   every question for a human: v2 replaced question events with forms, and its
   plugin API does not expose answering a form.
 
-[Unreleased]: https://github.com/jflowers/opencode-auto-question/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/jflowers/opencode-auto-question/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/jflowers/opencode-auto-question/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/jflowers/opencode-auto-question/compare/47de2ca...v0.1.1
 [0.1.0]: https://github.com/jflowers/opencode-auto-question/tree/47de2ca

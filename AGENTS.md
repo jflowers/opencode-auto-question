@@ -14,7 +14,8 @@ confidence gate with subagent context gathering, human fallback.
   `dewey gate auto-answer` reads this same single path, so don't add config
   sources without updating Dewey.
 - Agents: `agents/*.md`, registered by the plugin's `config` hook
-  (`src/agents.ts`); user-defined agents of the same name win.
+  (`src/agents.ts`); a user's settings for an agent of the same name win
+  and the bundled definition fills in the rest.
 - Log: `~/.local/share/opencode-auto-question/log.txt`
 - Release: in a PR, bump `version` in `package.json` and move the
   `CHANGELOG.md` entries under the new version. After it merges, push tag

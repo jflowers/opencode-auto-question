@@ -93,8 +93,9 @@ export interface Config {
   verbose: boolean
   /**
    * Register the bundled agents (autonomy, auto-question-ctx,
-   * auto-question-decide) through opencode's config hook. A user-defined
-   * agent of the same name always wins.
+   * auto-question-decide) through opencode's config hook. Settings the user
+   * gives an agent of the same name win; the bundled definition fills in the
+   * rest.
    */
   registerAgents: boolean
 }
