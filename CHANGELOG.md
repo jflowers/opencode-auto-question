@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-13
+
 ### Added
 - Per-agent `profiles` (#8): overrides for one agent's questions (engine,
   models, thresholds, guidance, context, summary, timeout), deep-merged over
@@ -32,6 +34,11 @@ All notable changes to this project are documented here. The format follows
   "handler timed out" summary written.
 - Loading the config no longer mutates the built-in defaults when a file
   leaves a block out and validation repairs it.
+- On opencode 1.19 the plugin no longer claims to be inactive. 1.19 loads the
+  package through both its 1.x and its v2 plugin runtimes, so the v2 `setup`
+  stub ran next to the working 1.x `server` entry and printed "installed but
+  inactive" while questions were in fact being auto-answered. The stub now
+  warns only when no 1.x host has called `server` within 15 seconds.
 
 ## [0.1.2] - 2026-11-13
 
@@ -81,7 +88,8 @@ First release on npm, as `opencode-auto-question`.
   every question for a human: v2 replaced question events with forms, and its
   plugin API does not expose answering a form.
 
-[Unreleased]: https://github.com/jflowers/opencode-auto-question/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/jflowers/opencode-auto-question/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/jflowers/opencode-auto-question/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/jflowers/opencode-auto-question/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/jflowers/opencode-auto-question/compare/47de2ca...v0.1.1
 [0.1.0]: https://github.com/jflowers/opencode-auto-question/tree/47de2ca
