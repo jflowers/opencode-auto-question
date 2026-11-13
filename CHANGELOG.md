@@ -6,22 +6,26 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.2.0] - 2026-11-13
-
 ### Added
 - Per-agent `profiles` (#8): overrides for one agent's questions (engine,
   models, thresholds, guidance, context, summary, timeout), deep-merged over
   the top-level settings. `guidance.inheritGlobal: false` in a profile drops
   the shared global guidance. Human gates are checked before any profile and
   cannot be changed by one.
+
+### Changed
+- An empty `guidance.globalPath` or `guidance.projectPath` now means no
+  guidance from that dir. Before, an empty value fell back to the default.
+
+## [0.2.0] - 2026-11-13
+
+### Added
 - `$OPENCODE_CONFIG_DIR/auto-question.jsonc` is loaded after the global file
   and deep-merged over it, so a tool can ship a self-contained opencode setup
   (#6). `AUTO_QUESTION_CONFIG=<path>` names one file to use instead of both.
   The log lists the files loaded.
 
 ### Changed
-- An empty `guidance.globalPath` or `guidance.projectPath` now means no
-  guidance from that dir. Before, an empty value fell back to the default.
 - A relative `guidance.globalPath` now resolves against the directory of the
   config file that sets it, not the process working directory.
 - Internal: deciding a question now returns an outcome (answered, deferred,
