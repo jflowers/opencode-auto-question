@@ -98,4 +98,33 @@ describe("loadGuidance", () => {
       expect(text).toBe("Absolute doc.")
     })
   })
+
+  test("inherited global docs load before the profile's own, then the project's", () => {
+    withTempDir((dir) => {
+      const shared = join(dir, "shared")
+      const own = join(dir, "own")
+      const projectDir = join(dir, "project")
+      mkdirSync(shared, { recursive: true })
+      mkdirSync(own, { recursive: true })
+      mkdirSync(join(projectDir, ".opencode/auto-question/guidance"), { recursive: true })
+      writeFileSync(join(shared, "s.md"), "Shared doc.")
+      writeFileSync(join(own, "o.md"), "Own doc.")
+      writeFileSync(join(projectDir, ".opencode/auto-question/guidance", "p.md"), "Project doc.")
+      expect(loadGuidance(projectDir, configWith({ inheritedGlobalPath: shared, globalPath: own }))).toBe(
+        "Shared doc.\n\n---\n\nOwn doc.\n\n---\n\nProject doc.",
+      )
+    })
+  })
+
+  test("empty paths load nothing from that dir", () => {
+    withTempDir((dir) => {
+      const own = join(dir, "own")
+      mkdirSync(own, { recursive: true })
+      mkdirSync(join(dir, ".opencode/auto-question/guidance"), { recursive: true })
+      writeFileSync(join(own, "o.md"), "Own doc.")
+      writeFileSync(join(dir, ".opencode/auto-question/guidance", "p.md"), "Project doc.")
+      expect(loadGuidance(dir, configWith({ globalPath: own, projectPath: "" }))).toBe("Own doc.")
+      expect(loadGuidance(dir, configWith({ globalPath: "", projectPath: "" }))).toBeNull()
+    })
+  })
 })

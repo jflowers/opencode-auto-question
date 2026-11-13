@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Per-agent `profiles` (#8): overrides for one agent's questions (engine,
+  models, thresholds, guidance, context, summary, timeout), deep-merged over
+  the top-level settings. `guidance.inheritGlobal: false` in a profile drops
+  the shared global guidance. Human gates are checked before any profile and
+  cannot be changed by one.
+
+### Changed
+- An empty `guidance.globalPath` or `guidance.projectPath` now means no
+  guidance from that dir. Before, an empty value fell back to the default.
+
 ## [0.2.0] - 2026-11-13
 
 ### Added
