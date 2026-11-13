@@ -24,9 +24,10 @@ jobs:
         with:
           bun-version: 1.4.4
 
-      # bun.lock is gitignored, so this resolves from package.json ranges.
+      # Fails if bun.lock is out of date with package.json, so CI tests the
+      # committed dependency versions rather than whatever the ranges resolve to.
       - name: Install
-        run: bun install
+        run: bun install --frozen-lockfile
 
       - name: Typecheck
         run: bun run typecheck

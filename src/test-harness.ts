@@ -65,10 +65,16 @@ const realFetch = globalThis.fetch
 
 export function createHarness(opts: HarnessOptions = {}): Harness {
   const projectDir = mkdtempSync(join(tmpdir(), "aq-harness-"))
-  if (opts.guidance !== undefined) {
-    const dir = join(projectDir, ".opencode", "auto-question", "guidance")
-    mkdirSync(dir, { recursive: true })
-    writeFileSync(join(dir, "guidance.md"), opts.guidance)
+  try {
+    if (opts.guidance !== undefined) {
+      const dir = join(projectDir, ".opencode", "auto-question", "guidance")
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(join(dir, "guidance.md"), opts.guidance)
+    }
+  } catch (e) {
+    // The caller never receives a harness to clean up, so clean up here.
+    rmSync(projectDir, { recursive: true, force: true })
+    throw e
   }
 
   const posts: Array<{ url: string; body: any }> = []
@@ -77,7 +83,9 @@ export function createHarness(opts: HarnessOptions = {}): Harness {
   const engine = opts.engine ?? []
   let engineCall = 0
 
-  globalThis.fetch = (async (_url: unknown, init?: { body?: string }) => {
+  // Installed as globalThis.fetch only once setup is complete (see the end of
+  // this function), so a throw during setup cannot leak the stub to other tests.
+  const stubFetch = (async (_url: unknown, init?: { body?: string }) => {
     engineRequests.push(init?.body ? JSON.parse(init.body) : null)
     const reply = engine[Math.min(engineCall++, engine.length - 1)]
     if (reply === undefined) throw new Error("no engine reply configured")
@@ -135,6 +143,8 @@ export function createHarness(opts: HarnessOptions = {}): Harness {
     session: { messages: async () => ({ data: [] }) },
   }
   const deps: HandlerDeps = { input: { client } as any, config, tracker, settled: new Set(), projectDir }
+
+  globalThis.fetch = stubFetch
 
   const isReply = (p: { url: string }) => p.url.endsWith("/reply")
   const isSummary = (p: { url: string; body: any }) => p.url === "/session/ses_1/message" && p.body?.noReply === true

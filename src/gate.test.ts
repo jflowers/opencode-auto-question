@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import { DEFAULT_CONFIG, loadConfig } from "./config"
-import { gatedAgentOverlap, isHumanGateQuestion, isHumanGatedAgent, isHumanGatedRequest } from "./gate"
-import { handleQuestionAsked, humanGateReason } from "./orchestrator"
+import { gatedAgentOverlap, isHumanGateQuestion, isHumanGatedAgent, isHumanGatedRequest, mergeGatedAgents } from "./gate"
+import { SETTLED_MAX, handleQuestionAsked, humanGateReason, markSettled } from "./orchestrator"
 import { createHarness, question, request, type EngineReply, type Harness } from "./test-harness"
 import type { QuestionInfo, QuestionRequest } from "./types"
 
@@ -37,8 +37,32 @@ describe("isHumanGateQuestion", () => {
     expect(isHumanGateQuestion(q("Which tags?", "HUMAN_GATE: scope"))).toBe(true)
   })
 
-  test("ignores the token when it does not start the text", () => {
+  test("detects markdown-decorated and respelled markers a model may write", () => {
+    for (const text of [
+      "**HUMAN_GATE:** Promote these?",
+      "**HUMAN_GATE**: Promote these?",
+      "_HUMAN_GATE:_ Promote these?",
+      "`HUMAN_GATE:` Promote these?",
+      "> HUMAN_GATE: Promote these?",
+      "## HUMAN_GATE: Promote these?",
+      "- HUMAN_GATE: Promote these?",
+      "1. HUMAN_GATE: Promote these?",
+      "2) **HUMAN_GATE:** Promote these?",
+      "\u200BHUMAN_GATE: Promote these?",
+      "HUMAN GATE: Promote these?",
+      "Human-Gate: Promote these?",
+      "HUMANGATE: Promote these?",
+      "HUMAN_GATE : Promote these?",
+    ]) {
+      expect([text, isHumanGateQuestion(q(text))]).toEqual([text, true])
+    }
+  })
+
+  test("ignores the token when it does not lead the text", () => {
     expect(isHumanGateQuestion(q("Should I mention HUMAN_GATE: in the docs?"))).toBe(false)
+    expect(isHumanGateQuestion(q("Step 3 HUMAN_GATE: promote?"))).toBe(false)
+    expect(isHumanGateQuestion(q("HUMAN_GATES: are documented where?"))).toBe(false)
+    expect(isHumanGateQuestion(q("HUMAN_GATE without a colon?"))).toBe(false)
     expect(isHumanGateQuestion(q("Which database?"))).toBe(false)
   })
 })
@@ -60,6 +84,11 @@ describe("gated agents", () => {
   test("overlap lists the auto-answered agents that are gated", () => {
     expect(gatedAgentOverlap(["autonomy", "CURATOR", "x"], ["curator", "x"])).toEqual(["CURATOR", "x"])
   })
+
+  test("merge keeps built-ins first and dedupes case-insensitively", () => {
+    expect(mergeGatedAgents(["curator"], ["Curator", "x", "X", "y"])).toEqual(["curator", "x", "y"])
+    expect(mergeGatedAgents(["curator"], [])).toEqual(["curator"])
+  })
 })
 
 describe("loadConfig human gates", () => {
@@ -68,18 +97,42 @@ describe("loadConfig human gates", () => {
     expect(loadConfig(fixture("test-config.jsonc")).humanGatedAgents).toEqual(["curator"])
   })
 
-  test("rejects agents overlapping the built-in set with an actionable message", () => {
-    expect(() => loadConfig(fixture("gated-overlap.jsonc"))).toThrow(
-      /agents includes human-gated agent\(s\) "Curator".*Remove it from "agents"/,
-    )
+  const load = (name: string) => {
+    const warnings: string[] = []
+    const config = loadConfig(fixture(name), (m) => warnings.push(m))
+    return { config, warnings }
+  }
+
+  test("drops an agent overlapping the built-in set and warns, without failing the load", () => {
+    const { config, warnings } = load("gated-overlap.jsonc")
+    expect(config.agents).toEqual(["autonomy"])
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toMatch(/agents includes human-gated agent\(s\) "Curator".*it was ignored.*Remove it from "agents"/)
   })
 
-  test("rejects agents overlapping a configured gated agent", () => {
-    expect(() => loadConfig(fixture("gated-custom.jsonc"))).toThrow(/"reviewer"/)
+  test("drops an agent overlapping a configured gated agent", () => {
+    const { config, warnings } = load("gated-custom.jsonc")
+    expect(config.agents).toEqual(["autonomy"])
+    expect(config.humanGatedAgents).toEqual(["curator", "reviewer"])
+    expect(warnings[0]).toContain('"reviewer"')
+  })
+
+  test("says so when no auto-answered agents remain", () => {
+    const { config, warnings } = load("gated-only.jsonc")
+    expect(config.agents).toEqual([])
+    expect(warnings[0]).toContain("No auto-answered agents remain.")
+  })
+
+  test("no overlap, no warning", () => {
+    expect(load("gated-extra.jsonc").warnings).toEqual([])
   })
 
   test("configured entries extend, never replace, the built-in set", () => {
     expect(loadConfig(fixture("gated-extra.jsonc")).humanGatedAgents).toEqual(["curator", "release-manager"])
+  })
+
+  test("configured entries are deduplicated case-insensitively", () => {
+    expect(loadConfig(fixture("gated-case.jsonc")).humanGatedAgents).toEqual(["curator", "release-manager"])
   })
 
   test("rejects a non-array humanGatedAgents", () => {
@@ -158,6 +211,24 @@ describe("handleQuestionAsked human gates", () => {
     expect(h.summaries()[0]).toContain('agent "curator" is human-gated')
   })
 
+  test("a gated request is settled, so a repeat delivery posts nothing more", async () => {
+    h = createHarness({ agent: "autonomy", engine: confident })
+    const marked = request([question("HUMAN_GATE: Promote?")])
+    await handleQuestionAsked(h.deps, marked, "v1")
+    expect(h.deps.settled.has("que_1")).toBe(true)
+    await handleQuestionAsked(h.deps, marked, "v2")
+    expect(h.summaries()).toHaveLength(1)
+    expect(h.replies()).toHaveLength(0)
+  })
+
+  test("a gated request is settled before the summary is injected", async () => {
+    h = createHarness({ agent: "autonomy", engine: confident })
+    const marked = request([question("HUMAN_GATE: Promote?")])
+    // Both deliveries start before either finishes, as v1 and v2 events can.
+    await Promise.all([handleQuestionAsked(h.deps, marked, "v1"), handleQuestionAsked(h.deps, marked, "v2")])
+    expect(h.summaries()).toHaveLength(1)
+  })
+
   test("with session summaries off, a gated question posts nothing at all", async () => {
     h = createHarness({ agent: "autonomy", engine: confident, config: { sessionSummary: false } })
     await handleQuestionAsked(h.deps, request([question("HUMAN_GATE: Promote?")]), "v1")
@@ -169,5 +240,15 @@ describe("handleQuestionAsked human gates", () => {
     await handleQuestionAsked(h.deps, request([question("HUMAN_GATE: Promote?")]), "v1")
     expect(h.posts).toEqual([])
     expect(h.engineRequests).toHaveLength(0)
+  })
+})
+
+describe("markSettled", () => {
+  test("drops the oldest half once past the cap", () => {
+    const settled = new Set<string>()
+    for (let i = 0; i <= SETTLED_MAX; i++) markSettled(settled, `q${i}`)
+    expect(settled.size).toBe(SETTLED_MAX / 2)
+    expect(settled.has("q0")).toBe(false)
+    expect(settled.has(`q${SETTLED_MAX}`)).toBe(true)
   })
 })

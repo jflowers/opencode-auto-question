@@ -170,8 +170,9 @@ When no guidance documents exist anywhere, pass 0 is skipped entirely and behavi
 
 Some questions are deliberate human decisions — for example the scope and promotion-review questions of Dewey's `/dewey-distill`. Auto-answering them would silently turn human promotion into automatic promotion, so the plugin never answers them:
 
-- **Marker**: a question (or its header) that begins with `HUMAN_GATE:` always goes to the human, regardless of engine confidence. One marked question defers the whole request. Detection is lenient (leading whitespace and any letter case count), because a false or spoofed marker can only force a human answer. The contract is defined in Dewey's `curator-agent-human-gates` change (design D7): `HUMAN_GATE: <question>` at the start of the first line.
-- **Gated agents**: the config fails to load, with an error naming the agent, when `agents` includes an agent in `humanGatedAgents` (always including `curator`). A failed load leaves the plugin inert, so every question goes to the human. As defense in depth, a question from a gated agent is also never answered at runtime.
+- **Marker**: a question (or its header) that begins with `HUMAN_GATE:` always goes to the human, regardless of engine confidence. One marked question defers the whole request, and the request is remembered so a repeated delivery of the same event is ignored. The contract is defined in Dewey's `curator-agent-human-gates` change (design D7): `HUMAN_GATE: <question>` at the start of the first line. Because a model writes the question text, detection is more lenient than the contract: leading whitespace and markdown decoration (`**HUMAN_GATE:**`, `> `, `1. `), any letter case, and `HUMAN GATE` / `HUMAN-GATE` spellings all count. A question that only mentions the marker mid-sentence does not.
+- **Cost of a false marker**: over-matching never auto-answers a gate, but it is not free. In an unattended run (gh-hud dispatching an autonomy TUI session) a deferred question blocks the pane until someone answers it, so any question the model writes with the marker, deliberately or by copying text that quotes it, stalls the run.
+- **Gated agents**: when `agents` includes an agent in `humanGatedAgents` (always including `curator`), that agent is dropped from `agents` and the plugin logs an error naming it. The rest of the config still loads, so other agents keep being auto-answered. As defense in depth, a question from a gated agent is also never answered at runtime.
 - Both checks run before pass 0, so project guidance documents cannot override them.
 
 Dewey's `dewey gate auto-answer` startup check refuses `/dewey-distill` independently when `curator` appears in this plugin's `agents` list.
@@ -183,7 +184,7 @@ Dewey's `dewey gate auto-answer` startup check refuses `/dewey-distill` independ
 | Option | Default | Meaning |
 |---|---|---|
 | `agents` | `["autonomy"]` | Session agents that trigger auto-answering |
-| `humanGatedAgents` | `["curator"]` | Agents whose questions are deliberate human gates; config load fails if `agents` overlaps this set. Entries extend the built-in `curator`, never replace it |
+| `humanGatedAgents` | `["curator"]` | Agents whose questions are deliberate human gates; any of them listed in `agents` are dropped from it with a logged error. Entries extend the built-in `curator` (case-insensitively), never replace it |
 | `engine` | `"auto"` | `"jev"`, `"llm"`, or `"auto"` (jev first, llm fallback) |
 | `jev` | auto-discovered | Carrier: explicit `apiKey`+`baseUrl`+`model` in config, else `OPENCODE_API_KEY` → OpenCode Zen (`jev-1.13`, ~$0.000013/call), else `OPENROUTER_API_KEY` → OpenRouter (`typesafe/jev-1.14`) |
 | `confidenceThreshold` | `0.6` | Pass 1 answers at or above this immediately |

@@ -1,0 +1,4 @@
+{
+  // spellings differing only in case collapse to one entry, built-in first
+  "humanGatedAgents": ["Curator", "release-manager", "RELEASE-MANAGER"]
+}

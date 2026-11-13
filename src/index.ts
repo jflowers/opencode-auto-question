@@ -1,12 +1,11 @@
 import type { Plugin, PluginModule } from "@opencode-ai/plugin"
 import { loadConfig } from "./config"
 import { AgentTracker } from "./detect"
-import { handleQuestionAsked, type HandlerDeps } from "./orchestrator"
+import { handleQuestionAsked, markSettled, type HandlerDeps } from "./orchestrator"
 import { resolveJevCarrier } from "./engines/jev"
 import { log, setVerbose } from "./log"
 import type { QuestionRequest } from "./types"
 
-const SETTLED_MAX = 1000
 
 interface EventPayload {
   id?: string
@@ -53,13 +52,7 @@ function onEvent(deps: HandlerDeps, inflight: Set<string>, event: EventPayload):
     case "question.v2.rejected": {
       const requestID = properties?.requestID ?? properties?.id
       if (typeof requestID === "string") {
-        deps.settled.add(requestID)
-        if (deps.settled.size > SETTLED_MAX) {
-          for (const id of deps.settled) {
-            deps.settled.delete(id)
-            if (deps.settled.size <= SETTLED_MAX / 2) break
-          }
-        }
+        markSettled(deps.settled, requestID)
       }
       break
     }
@@ -69,7 +62,7 @@ function onEvent(deps: HandlerDeps, inflight: Set<string>, event: EventPayload):
 const plugin: Plugin = async (input) => {
   let config
   try {
-    config = loadConfig()
+    config = loadConfig(undefined, (message) => log("error", "config problem — repaired", { message }))
   } catch (e) {
     log("error", "config load failed — plugin inert", { error: String(e) })
     return {}

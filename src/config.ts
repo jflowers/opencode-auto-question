@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import type { Config } from "./types"
-import { BUILTIN_HUMAN_GATED_AGENTS, gatedAgentOverlap } from "./gate"
+import { BUILTIN_HUMAN_GATED_AGENTS, gatedAgentOverlap, isHumanGatedAgent, mergeGatedAgents } from "./gate"
 
 export class ConfigError extends Error {}
 
@@ -132,8 +132,13 @@ function clamp01(n: unknown, fallback: number): number {
   return Math.min(1, Math.max(0, v))
 }
 
-/** Load, parse, interpolate, and validate the plugin config. Throws ConfigError. */
-export function loadConfig(path: string = defaultConfigPath()): Config {
+/**
+ * Load, parse, interpolate, and validate the plugin config. Throws ConfigError
+ * for invalid config. Problems the loader can repair without weakening a
+ * guarantee are repaired and reported through `warn` instead, so one bad entry
+ * does not turn the whole plugin off.
+ */
+export function loadConfig(path: string = defaultConfigPath(), warn: (message: string) => void = () => {}): Config {
   let text: string
   try {
     text = readFileSync(path, "utf8")
@@ -159,13 +164,19 @@ export function loadConfig(path: string = defaultConfigPath()): Config {
     throw new ConfigError("humanGatedAgents must be an array of strings")
   }
   // The built-in gated agents cannot be removed by configuration.
-  config.humanGatedAgents = [...new Set([...BUILTIN_HUMAN_GATED_AGENTS, ...config.humanGatedAgents])]
+  config.humanGatedAgents = mergeGatedAgents(BUILTIN_HUMAN_GATED_AGENTS, config.humanGatedAgents)
+  // A gated agent listed for auto-answering is dropped, not fatal: failing the
+  // whole load would leave every other agent's questions unanswered too (a
+  // fleet-wide stall for unattended sessions). Dropping it keeps the gate.
   const overlap = gatedAgentOverlap(config.agents, config.humanGatedAgents)
   if (overlap.length > 0) {
-    throw new ConfigError(
+    config.agents = config.agents.filter((a) => !isHumanGatedAgent(a, config.humanGatedAgents))
+    warn(
       `agents includes human-gated agent(s) ${overlap.map((a) => JSON.stringify(a)).join(", ")}: ` +
-        "their questions are deliberate human gates and must never be auto-answered. " +
-        `Remove ${overlap.length === 1 ? "it" : "them"} from "agents" in the auto-question config.`,
+        "their questions are deliberate human gates and are never auto-answered, so " +
+        `${overlap.length === 1 ? "it was" : "they were"} ignored. ` +
+        `Remove ${overlap.length === 1 ? "it" : "them"} from "agents" in the auto-question config.` +
+        (config.agents.length === 0 ? " No auto-answered agents remain." : ""),
     )
   }
   if (config.engine !== "jev" && config.engine !== "llm" && config.engine !== "auto") {
