@@ -3,8 +3,10 @@ name: Publish
 # Publishes to npm when a version tag is pushed (git tag v0.2.0 && git push origin v0.2.0).
 # The tag must match package.json's version. A version already on npm is skipped.
 #
-# Auth: npm trusted publishing (OIDC) once it is configured for the package on
-# npmjs.com; until then, an NPM_TOKEN repository secret with publish rights.
+# Auth: npm trusted publishing (OIDC). npmjs.com trusts this repository and this
+# workflow file for the package, so no npm token is used; id-token: write below
+# lets the job request the OIDC token. Renaming this file breaks publishing until
+# the trusted publisher on npmjs.com is updated to match.
 on:
   push:
     tags: ["v*"]
@@ -71,5 +73,3 @@ jobs:
       - name: Publish
         if: steps.package.outputs.published == 'false'
         run: npx --yes --package npm@11 npm publish --access public --provenance --ignore-scripts
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
