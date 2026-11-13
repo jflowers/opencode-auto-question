@@ -8,11 +8,15 @@ confidence gate with subagent context gathering, human fallback.
   loads). Default export `{ id, server, setup }`: `server` is the V1 plugin
   API (opencode 1.19.x); `setup` is the v2 entry, a warning-only stub until
   v2 supports answering forms.
-- Config: `~/.config/opencode/auto-question.jsonc`, optional (template in
+- Config: `~/.config/opencode/auto-question.jsonc`, then
+  `$OPENCODE_CONFIG_DIR/auto-question.jsonc`; or `AUTO_QUESTION_CONFIG` alone
+  (`configSources()` in `src/config.ts`). All optional (template in
   `config/`, schema in `auto-question.schema.json`; `src/schema.test.ts` keeps
   the schema, `DEFAULT_CONFIG` and the template in step). Dewey's
-  `dewey gate auto-answer` reads this same single path, so don't add config
-  sources without updating Dewey.
+  `dewey gate auto-answer` mirrors these paths to refuse configs that list
+  `curator`; keep it in step when config sources change. The plugin itself
+  drops human-gated agents after merging every source, so it does not rely
+  on Dewey's check.
 - Agents: `agents/*.md`, registered by the plugin's `config` hook
   (`src/agents.ts`); a user's settings for an agent of the same name win
   and the bundled definition fills in the rest.

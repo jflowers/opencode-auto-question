@@ -97,7 +97,7 @@ Earlier versions asked you to symlink these files into `~/.config/opencode/agent
 cp config/auto-question.jsonc ~/.config/opencode/auto-question.jsonc   # edit to taste
 ```
 
-The file has a JSON schema (`$schema` at the top) for completion in editors. The plugin reads only this path.
+The file has a JSON schema (`$schema` at the top) for completion in editors. Two environment variables add or replace config files; see [Config files](#config-files).
 
 Switch a session to the `autonomy` agent, then trigger any question — the decision engine answers it.
 
@@ -222,9 +222,21 @@ Dewey's `dewey gate auto-answer` startup check refuses `/dewey-distill` independ
 | `agentDecision.timeoutMs` | `60000` | Timeout for the pass-0 decision agent |
 | `guidance.enabled` | `true` | Set `false` to disable pass 0 entirely |
 | `guidance.projectPath` | `".opencode/auto-question/guidance"` | Project guidance dir (relative to project root or absolute) |
-| `guidance.globalPath` | `"~/.config/opencode/auto-question/guidance"` | Global guidance dir |
+| `guidance.globalPath` | `"~/.config/opencode/auto-question/guidance"` | Global guidance dir. A relative path is relative to the config file that sets it |
 | `guidance.maxChars` | `20000` | Total guidance characters passed to the decision agent |
 | `handlerTimeoutMs` | `120000` | Hard cap per question request |
+
+### Config files
+
+The plugin loads, in order, each file deep-merged over the one before (objects merge, arrays and scalars replace):
+
+1. The built-in defaults.
+2. `~/.config/opencode/auto-question.jsonc`, if present.
+3. `$OPENCODE_CONFIG_DIR/auto-question.jsonc`, if `OPENCODE_CONFIG_DIR` is set and the file exists. This is the same variable opencode uses for an extra config directory, so a tool can ship its agents, guidance and auto-question settings in one directory and run `OPENCODE_CONFIG_DIR=<dir> opencode run ...` without touching the global config.
+
+`AUTO_QUESTION_CONFIG=<path>` instead names one file that is merged over the defaults alone: neither the global file nor the config-dir file is read. That file must exist, or the plugin stays inert and logs why.
+
+A relative `guidance.globalPath` resolves against the directory of the file that sets it, so a config dir can keep its guidance at `<dir>/auto-question/guidance` with `"globalPath": "auto-question/guidance"`. `guidance.projectPath` stays relative to the project. The log records which files were loaded.
 
 ## Notes
 
