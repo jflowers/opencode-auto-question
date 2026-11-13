@@ -2,9 +2,9 @@
  * Smoke test: loads the plugin with the real config file and a mock client,
  * then simulates a message.updated + question.asked sequence for a
  * non-autonomous agent (should no-op) and verifies hook wiring.
- * Run: bun run smoke.ts
+ * Run: bun run scripts/smoke/smoke.ts
  */
-import pluginModule from "./src/index"
+import pluginModule from "../../src/index"
 
 const calls: string[] = []
 const mockClient = {

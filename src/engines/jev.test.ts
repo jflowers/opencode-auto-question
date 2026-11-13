@@ -28,6 +28,7 @@ const base: Config = {
   immediateContext: true,
   sessionSummary: true,
   verbose: false,
+  registerAgents: true,
 }
 
 const KEYS = ["OPENCODE_API_KEY", "OPENROUTER_API_KEY"] as const

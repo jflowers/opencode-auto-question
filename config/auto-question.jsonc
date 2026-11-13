@@ -1,9 +1,17 @@
 {
-  // opencode-auto-question plugin configuration.
+  // opencode-auto-question plugin configuration. Optional: without this file
+  // the plugin runs on the defaults shown here.
   // Copy to: ~/.config/opencode/auto-question.jsonc
   // {env:VAR} placeholders are interpolated from the environment.
+  "$schema": "https://raw.githubusercontent.com/jflowers/opencode-auto-question/main/auto-question.schema.json",
 
   "enabled": true,
+
+  // Register the bundled agents (autonomy, auto-question-ctx,
+  // auto-question-decide). An agent you define yourself with the same name,
+  // in opencode.json or agents/*.md, always wins. Note: autonomy allows
+  // external_directory (every path on disk); see the README to scope it.
+  "registerAgents": true,
 
   // Sessions whose selected agent matches one of these names get auto-answered.
   "agents": ["autonomy"],
@@ -33,18 +41,19 @@
     "timeoutMs": 15000
   },
 
+  // Any OpenAI-compatible chat-completions endpoint.
   "llm": {
-    "baseUrl": "https://api.enmaas.devshift.net/v1",
-    "apiKey": "{env:ENMAAS_KEY}",
-    "model": "rits/zai-org/glm-5-3",
+    "baseUrl": "https://openrouter.ai/api/v1",
+    "apiKey": "{env:OPENROUTER_API_KEY}",
+    "model": "openrouter/auto",
     "timeoutMs": 60000
   },
 
   // Pass 1 (no context) answers at or above this confidence immediately.
   "confidenceThreshold": 0.6,
 
-  // After context gathering (pass 2), answers at or above this confidence are
-  // sent; below this the human answers via the normal TUI form.
+  // Applies only to a decision re-made in pass 2 with gathered context: at or
+  // above it the answer is sent, below it the human answers via the TUI form.
   "fallbackThreshold": 0.35,
 
   "contextGathering": {

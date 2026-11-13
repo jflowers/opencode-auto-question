@@ -36,7 +36,7 @@ export interface JevConfig {
 }
 
 export interface LlmConfig {
-  /** OpenAI-compatible base URL, e.g. https://api.enmaas.devshift.net/v1 */
+  /** OpenAI-compatible base URL, e.g. https://openrouter.ai/api/v1 */
   baseUrl: string
   apiKey: string
   model: string
@@ -91,6 +91,12 @@ export interface Config {
   /** Hard cap for the entire auto-answer attempt per question request. */
   handlerTimeoutMs: number
   verbose: boolean
+  /**
+   * Register the bundled agents (autonomy, auto-question-ctx,
+   * auto-question-decide) through opencode's config hook. A user-defined
+   * agent of the same name always wins.
+   */
+  registerAgents: boolean
 }
 
 export interface Decision {

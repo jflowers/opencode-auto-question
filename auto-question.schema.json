@@ -1,0 +1,195 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/jflowers/opencode-auto-question/main/auto-question.schema.json",
+  "title": "opencode-auto-question config",
+  "description": "~/.config/opencode/auto-question.jsonc. Every key is optional; omitted keys take the defaults. String values may use {env:VAR}.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "Turn the plugin off without uninstalling it."
+    },
+    "agents": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "default": [
+        "autonomy"
+      ],
+      "description": "Session agents whose questions are auto-answered (case-insensitive)."
+    },
+    "humanGatedAgents": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [
+        "curator"
+      ],
+      "description": "Agents whose questions always go to a human. Extends the built-in \"curator\"; any of these listed in agents are dropped from it."
+    },
+    "engine": {
+      "enum": [
+        "jev",
+        "llm",
+        "auto"
+      ],
+      "default": "auto",
+      "description": "Decision engine: jev, llm (JSON-contract chat completion), or auto (jev first, llm fallback)."
+    },
+    "jev": {
+      "type": "object",
+      "description": "Jev (TypeSafe decision model) carrier. With an empty apiKey, the carrier is auto-discovered from OPENCODE_API_KEY, then OPENROUTER_API_KEY.",
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "type": "string",
+          "default": "typesafe/jev-1.14"
+        },
+        "baseUrl": {
+          "type": "string",
+          "description": "http(s) URL; {env:VAR} is interpolated",
+          "default": "https://openrouter.ai/api/alpha/decisions"
+        },
+        "apiKey": {
+          "type": "string",
+          "description": "API key, usually \"{env:VAR}\"",
+          "default": "{env:OPENROUTER_API_KEY}"
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 15000
+        }
+      }
+    },
+    "llm": {
+      "type": "object",
+      "description": "OpenAI-compatible chat-completions engine.",
+      "additionalProperties": false,
+      "properties": {
+        "baseUrl": {
+          "type": "string",
+          "description": "http(s) URL; {env:VAR} is interpolated",
+          "default": "https://openrouter.ai/api/v1"
+        },
+        "apiKey": {
+          "type": "string",
+          "description": "API key, usually \"{env:VAR}\"",
+          "default": "{env:OPENROUTER_API_KEY}"
+        },
+        "model": {
+          "type": "string",
+          "default": "openrouter/auto"
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 60000
+        }
+      }
+    },
+    "confidenceThreshold": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "default": 0.6,
+      "description": "Pass 1 answers at or above this are sent immediately. A decision that pass 2 did not re-make is held to this threshold."
+    },
+    "fallbackThreshold": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "default": 0.35,
+      "description": "Applies only to a decision re-made in pass 2 with gathered context; below it goes to the human."
+    },
+    "contextGathering": {
+      "type": "object",
+      "description": "Pass 2 context-gathering subagent.",
+      "additionalProperties": false,
+      "properties": {
+        "agent": {
+          "type": "string",
+          "default": "auto-question-ctx"
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 30000
+        }
+      }
+    },
+    "agentDecision": {
+      "type": "object",
+      "description": "Pass 0 decision agent, used when project guidance exists.",
+      "additionalProperties": false,
+      "properties": {
+        "agent": {
+          "type": "string",
+          "default": "auto-question-decide"
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 60000
+        }
+      }
+    },
+    "guidance": {
+      "type": "object",
+      "description": "Project guidance documents for pass 0.",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "projectPath": {
+          "type": "string",
+          "default": ".opencode/auto-question/guidance"
+        },
+        "globalPath": {
+          "type": "string",
+          "default": "~/.config/opencode/auto-question/guidance"
+        },
+        "maxChars": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 20000
+        }
+      }
+    },
+    "immediateContext": {
+      "type": "boolean",
+      "default": true,
+      "description": "Give the engine the assistant text that led to the question."
+    },
+    "sessionSummary": {
+      "type": "boolean",
+      "default": true,
+      "description": "Post a hidden summary to the session after answering or deferring."
+    },
+    "handlerTimeoutMs": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 120000,
+      "description": "Hard cap for one auto-answer attempt."
+    },
+    "verbose": {
+      "type": "boolean",
+      "default": false
+    },
+    "registerAgents": {
+      "type": "boolean",
+      "default": true,
+      "description": "Register the bundled autonomy, auto-question-ctx and auto-question-decide agents. A user-defined agent of the same name always wins."
+    }
+  }
+}

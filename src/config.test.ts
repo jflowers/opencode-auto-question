@@ -50,8 +50,24 @@ describe("mergeConfig", () => {
 })
 
 describe("loadConfig", () => {
-  test("missing file throws ConfigError", () => {
-    expect(() => loadConfig("/nonexistent/auto-question.jsonc")).toThrow()
+  test("a missing file runs on the defaults", () => {
+    const config = loadConfig("/nonexistent/auto-question.jsonc")
+    expect(config.agents).toEqual(["autonomy"])
+    expect(config.registerAgents).toBe(true)
+    expect(config.engine).toBe("auto")
+  })
+
+  test("a path that exists but can't be read as a file throws ConfigError", () => {
+    expect(() => loadConfig(import.meta.dir)).toThrow(/not readable/)
+  })
+
+  test("defaults point at public endpoints only", () => {
+    expect(DEFAULT_CONFIG.llm.baseUrl).toBe("https://openrouter.ai/api/v1")
+    expect(DEFAULT_CONFIG.llm.apiKey).toBe("{env:OPENROUTER_API_KEY}")
+  })
+
+  test("rejects a non-boolean registerAgents", () => {
+    expect(() => loadConfig(`${import.meta.dir}/fixtures/register-invalid.jsonc`)).toThrow(/registerAgents must be a boolean/)
   })
 
   test("loads jsonc with comments and interpolation", () => {

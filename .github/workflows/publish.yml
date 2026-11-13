@@ -1,0 +1,75 @@
+name: Publish
+
+# Publishes to npm when a version tag is pushed (git tag v0.2.0 && git push origin v0.2.0).
+# The tag must match package.json's version. A version already on npm is skipped.
+#
+# Auth: npm trusted publishing (OIDC) once it is configured for the package on
+# npmjs.com; until then, an NPM_TOKEN repository secret with publish rights.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  npm:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+          registry-url: https://registry.npmjs.org
+
+      - name: Check version
+        id: package
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ "${GITHUB_REF_NAME}" != "v${VERSION}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match package.json version ${VERSION}"
+            exit 1
+          fi
+          if npm view "${NAME}@${VERSION}" version >/dev/null 2>&1; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "${NAME}@${VERSION} is already on npm; nothing to do."
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # bun install runs the prepare script, which builds dist/.
+      - name: Install and build
+        if: steps.package.outputs.published == 'false'
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        if: steps.package.outputs.published == 'false'
+        run: bun run typecheck
+
+      - name: Test
+        if: steps.package.outputs.published == 'false'
+        run: bun test
+
+      - name: Verify package
+        if: steps.package.outputs.published == 'false'
+        run: bun run verify:package
+
+      - name: Publish
+        if: steps.package.outputs.published == 'false'
+        run: npx --yes --package npm@11 npm publish --access public --provenance --ignore-scripts
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

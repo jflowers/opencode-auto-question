@@ -4,10 +4,54 @@
   "description": "opencode plugin that auto-answers the question tool when running with an autonomous agent, using Jev (TypeSafe decision model) or an LLM JSON contract, with tool-assisted context gathering.",
   "license": "Apache-2.0",
   "type": "module",
+  "author": "Jay Flowers",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jflowers/opencode-auto-question.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jflowers/opencode-auto-question/issues"
+  },
+  "homepage": "https://github.com/jflowers/opencode-auto-question#readme",
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "plugin",
+    "question",
+    "autonomous",
+    "agent",
+    "jev"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    "./server": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./server": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "agents/",
+    "config/auto-question.jsonc",
+    "auto-question.schema.json",
+    "CHANGELOG.md",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   },
   "scripts": {
+    "build": "rm -rf dist && bun build src/index.ts --outdir dist --target node --format esm --sourcemap=linked && tsc -p tsconfig.build.json",
+    "prepare": "bun run build",
+    "verify:package": "bun scripts/verify-package.ts",
+    "prepublishOnly": "bun run build && bun run verify:package",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
   },
