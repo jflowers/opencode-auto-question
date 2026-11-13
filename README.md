@@ -63,7 +63,7 @@ Requires opencode 1.x (tested with 1.19). opencode v2 is not supported yet: the 
 ### From npm
 
 ```bash
-opencode plugin -g @jflowers/opencode-auto-question
+opencode plugin -g opencode-auto-question
 export OPENROUTER_API_KEY=...   # or OPENCODE_API_KEY for Jev via OpenCode Zen
 ```
 
@@ -72,7 +72,7 @@ Restart opencode. That's all: the plugin registers its agents itself, and withou
 For a fleet, pin an exact version in the shared `~/.config/opencode/opencode.jsonc` so every machine runs the same code, and bump it deliberately:
 
 ```jsonc
-"plugin": ["@jflowers/opencode-auto-question@0.2.0"]
+"plugin": ["opencode-auto-question@0.1.0"]
 ```
 
 ### From source
