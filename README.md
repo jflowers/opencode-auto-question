@@ -58,7 +58,7 @@ Every failure mode (API errors, timeouts, unparsable responses, config problems)
 
 ## Install
 
-Requires opencode 1.x (tested with 1.19). opencode v2 is not supported yet: the plugin loads there but stays inactive and says so in the log.
+Requires opencode 1.x (tested with 1.19). opencode v2 is not supported yet: the plugin loads there but stays inactive and says so in the log. opencode 1.19 also runs a v2 plugin runtime that loads the same package; there the 1.x entry does the work and the v2 entry stays quiet.
 
 ### From npm
 

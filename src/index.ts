@@ -7,6 +7,7 @@ import { handleQuestionAsked, markSettled, type HandlerDeps } from "./orchestrat
 import { resolveJevCarrier } from "./engines/jev"
 import { log, setVerbose } from "./log"
 import type { QuestionRequest } from "./types"
+import { markServerLoaded, setup } from "./v2"
 
 
 interface EventPayload {
@@ -62,6 +63,7 @@ function onEvent(deps: HandlerDeps, inflight: Set<string>, event: EventPayload):
 }
 
 const plugin: Plugin = async (input) => {
+  markServerLoaded()
   let config
   try {
     const sources = configSources()
@@ -132,24 +134,10 @@ const plugin: Plugin = async (input) => {
   }
 }
 
-const V2_UNSUPPORTED =
-  "auto-question supports opencode 1.x only for now; on this opencode (v2 plugin API) it is installed but inactive. " +
-  "Questions are left for a human."
-
-/**
- * opencode v2 entry point. v2 replaced the question tool's events with forms,
- * and its plugin context does not expose replying to a form, so there is
- * nothing to hook yet. Say so loudly rather than load silently and do nothing.
- */
-async function setup(_ctx: unknown): Promise<void> {
-  log("warn", V2_UNSUPPORTED)
-  console.warn(`[auto-question] ${V2_UNSUPPORTED}`)
-}
-
 /**
  * One package for both plugin APIs, following opencode-dcp: 1.x hosts call
- * `server`, v2 hosts call `setup`.
+ * `server`, v2 hosts call `setup`, and opencode 1.19+ calls both.
  */
-export default { id: "auto-question", server: plugin, setup } satisfies PluginModule & {
+export default { id: "auto-question", server: plugin, setup: (ctx: unknown) => setup(ctx) } satisfies PluginModule & {
   setup: (ctx: unknown) => Promise<void>
 }

@@ -6,8 +6,9 @@ confidence gate with subagent context gathering, human fallback.
 
 - Plugin entry: `src/index.ts`, built to `dist/index.js` (what opencode
   loads). Default export `{ id, server, setup }`: `server` is the V1 plugin
-  API (opencode 1.19.x); `setup` is the v2 entry, a warning-only stub until
-  v2 supports answering forms.
+  API (opencode 1.19.x); `setup` is the v2 entry (`src/v2.ts`), a stub until
+  v2 supports answering forms. opencode 1.19 calls both, so the stub warns
+  only if no 1.x `server` call shows up within a grace period.
 - Config: `~/.config/opencode/auto-question.jsonc`, then
   `$OPENCODE_CONFIG_DIR/auto-question.jsonc`; or `AUTO_QUESTION_CONFIG` alone
   (`configSources()` in `src/config.ts`). All optional (template in
