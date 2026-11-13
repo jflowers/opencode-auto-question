@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- A decision that finishes after `handlerTimeoutMs` is now dropped. Before, it
+  was still replied after the question had been left for the human and the
+  "handler timed out" summary written.
+
+### Changed
+- Internal: deciding a question now returns an outcome (answered, deferred,
+  gated, timed out) and one function replies and writes the summary for all of
+  them. This prepares `onDefer` (#7) and structured results (#10).
+
 ## [0.1.2] - 2026-11-13
 
 ### Fixed

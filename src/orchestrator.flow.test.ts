@@ -127,6 +127,20 @@ describe("handleQuestionAsked decision flow", () => {
     expect(h.summaries()).toEqual(["[auto-question] Deferred to human — handler timed out (0s)"])
   })
 
+  test("a decision that arrives after the handler timeout is dropped, not replied", async () => {
+    h = createHarness({
+      agent: "autonomy",
+      engine: [{ delayMs: 60, reply: decide(0.99) }],
+      config: { handlerTimeoutMs: 20 },
+    })
+    await handleQuestionAsked(h.deps, q(), "v1")
+    // Let the late decision finish.
+    await new Promise((resolve) => setTimeout(resolve, 120))
+    expect(h.engineRequests).toHaveLength(1)
+    expect(h.replies()).toHaveLength(0)
+    expect(h.summaries()).toEqual(["[auto-question] Deferred to human — handler timed out (0s)"])
+  })
+
   test("sessionSummary false replies without injecting a summary", async () => {
     h = createHarness({ agent: "autonomy", engine: [decide(0.9)], config: { sessionSummary: false } })
     await handleQuestionAsked(h.deps, q(), "v1")

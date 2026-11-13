@@ -265,7 +265,36 @@ async function getImmediateContext(httpClient: any, request: QuestionRequest): P
   }
 }
 
-async function decideAndReply(deps: HandlerDeps, request: QuestionRequest, version: "v1" | "v2"): Promise<void> {
+// ---------------------------------------------------------------------------
+// Outcomes
+// ---------------------------------------------------------------------------
+
+/**
+ * How a question request ends. Deciding produces one of these without side
+ * effects; settle() is the only place that replies or writes a summary, so
+ * every way a request can end goes through the same code.
+ */
+export type Outcome =
+  | { kind: "answered"; decision: Decision; pass: string }
+  | {
+      kind: "deferred"
+      /** The decision that fell short, or a failed one; null if none was made. */
+      decision: Decision | null
+      /** Why it was deferred, for the summary. */
+      reason: string
+      /** The confidence the decision had to reach. */
+      threshold: number
+      pass: string
+    }
+  | { kind: "gated"; reason: string }
+  | { kind: "timeout"; timeoutMs: number }
+
+/**
+ * Decide a request: pass 0 (project guidance), pass 1, pass 2. Returns the
+ * outcome without replying or writing a summary, so a result that arrives
+ * after the handler timeout changes nothing.
+ */
+export async function decideOutcome(deps: HandlerDeps, request: QuestionRequest): Promise<Outcome> {
   const { config } = deps
 
   // Fetch the model's reasoning text from the same assistant message that
@@ -290,11 +319,7 @@ async function decideAndReply(deps: HandlerDeps, request: QuestionRequest, versi
     logDecision("pass 0 (guidance agent)", request.id, agentDecision)
 
     if (agentDecision.ok && minConfidence(agentDecision) >= config.confidenceThreshold) {
-      await reply(deps, request, agentDecision, version, "pass 0")
-      if (config.sessionSummary) {
-        await injectSummary(deps, request.sessionID, formatAutoAnswered(request, agentDecision, "pass 0"))
-      }
-      return
+      return { kind: "answered", decision: agentDecision, pass: "pass 0" }
     }
 
     if (agentDecision.ok && agentDecision.guidanceCovered) {
@@ -306,15 +331,13 @@ async function decideAndReply(deps: HandlerDeps, request: QuestionRequest, versi
         minConfidence: minConfidence(agentDecision),
         threshold: config.confidenceThreshold,
       })
-      if (config.sessionSummary) {
-        await injectSummary(deps, request.sessionID, formatDeferred(
-          request,
-          agentDecision,
-          "project guidance covered the question but the decision agent was not confident",
-          config.confidenceThreshold,
-        ))
+      return {
+        kind: "deferred",
+        decision: agentDecision,
+        reason: "project guidance covered the question but the decision agent was not confident",
+        threshold: config.confidenceThreshold,
+        pass: "pass 0",
       }
-      return
     }
 
     // Not covered, or the agent failed — fall through to the normal flow.
@@ -328,11 +351,7 @@ async function decideAndReply(deps: HandlerDeps, request: QuestionRequest, versi
   logDecision("pass 1", request.id, decision)
 
   if (decision.ok && minConfidence(decision) >= config.confidenceThreshold) {
-    await reply(deps, request, decision, version, "pass 1")
-    if (config.sessionSummary) {
-      await injectSummary(deps, request.sessionID, formatAutoAnswered(request, decision, "pass 1"))
-    }
-    return
+    return { kind: "answered", decision, pass: "pass 1" }
   }
 
   // Pass 2: gather additional context with a subagent, combine with immediate
@@ -365,11 +384,7 @@ async function decideAndReply(deps: HandlerDeps, request: QuestionRequest, versi
 
   const threshold = pass === "pass 2" ? config.fallbackThreshold : config.confidenceThreshold
   if (decision.ok && minConfidence(decision) >= threshold) {
-    await reply(deps, request, decision, version, pass)
-    if (config.sessionSummary) {
-      await injectSummary(deps, request.sessionID, formatAutoAnswered(request, decision, pass))
-    }
-    return
+    return { kind: "answered", decision, pass }
   }
 
   log("info", "below threshold — leaving for human", {
@@ -378,13 +393,44 @@ async function decideAndReply(deps: HandlerDeps, request: QuestionRequest, versi
     minConfidence: decision.ok ? minConfidence(decision) : null,
     threshold,
   })
-  if (config.sessionSummary) {
-    await injectSummary(deps, request.sessionID, formatDeferred(
-      request,
-      decision,
-      decision.ok ? "low confidence" : (decision.error ?? "decision failed"),
-      threshold,
-    ))
+  return {
+    kind: "deferred",
+    decision,
+    reason: decision.ok ? "low confidence" : (decision.error ?? "decision failed"),
+    threshold,
+    pass,
+  }
+}
+
+/** The session summary text for an outcome. */
+export function summaryText(request: QuestionRequest, outcome: Outcome): string {
+  switch (outcome.kind) {
+    case "answered":
+      return formatAutoAnswered(request, outcome.decision, outcome.pass)
+    case "deferred":
+      return formatDeferred(request, outcome.decision, outcome.reason, outcome.threshold)
+    case "gated":
+      return `[auto-question] Deferred to human — ${outcome.reason}`
+    case "timeout":
+      return `[auto-question] Deferred to human — handler timed out (${Math.round(outcome.timeoutMs / 1000)}s)`
+  }
+}
+
+/**
+ * Act on an outcome: reply when answered (otherwise the question stays
+ * pending for the human), then write the session summary.
+ */
+async function settle(
+  deps: HandlerDeps,
+  request: QuestionRequest,
+  version: "v1" | "v2",
+  outcome: Outcome,
+): Promise<void> {
+  if (outcome.kind === "answered") {
+    await reply(deps, request, outcome.decision, version, outcome.pass)
+  }
+  if (deps.config.sessionSummary) {
+    await injectSummary(deps, request.sessionID, summaryText(request, outcome))
   }
 }
 
@@ -431,18 +477,16 @@ export async function handleQuestionAsked(
     if (settled.has(request.id)) return
     markSettled(settled, request.id)
     log("info", "human gate — leaving for human", { requestID: request.id, reason: gate })
-    if (config.sessionSummary) {
-      await injectSummary(deps, request.sessionID, `[auto-question] Deferred to human — ${gate}`)
-    }
+    await settle(deps, request, version, { kind: "gated", reason: gate })
     return
   }
 
-  const outcome = await withTimeout(decideAndReply(deps, request, version), config.handlerTimeoutMs)
+  // The deciding work is not cancelled on timeout, but it has no side effects:
+  // a decision that arrives late is dropped rather than replied.
+  let outcome = await withTimeout(decideOutcome(deps, request), config.handlerTimeoutMs)
   if (outcome === "timeout") {
     log("warn", "handler timed out — leaving for human", { requestID: request.id })
-    if (config.sessionSummary) {
-      await injectSummary(deps, request.sessionID,
-        `[auto-question] Deferred to human — handler timed out (${Math.round(config.handlerTimeoutMs / 1000)}s)`)
-    }
+    outcome = { kind: "timeout", timeoutMs: config.handlerTimeoutMs }
   }
+  await settle(deps, request, version, outcome)
 }
