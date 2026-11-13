@@ -8,8 +8,9 @@
   "enabled": true,
 
   // Register the bundled agents (autonomy, auto-question-ctx,
-  // auto-question-decide). An agent you define yourself with the same name,
-  // in opencode.json or agents/*.md, always wins. Note: autonomy allows
+  // auto-question-decide). Settings you give an agent of the same name, in
+  // opencode.json or agents/*.md, win; the bundled definition fills in the
+  // rest. Note: autonomy allows
   // external_directory (every path on disk); see the README to scope it.
   "registerAgents": true,
 
