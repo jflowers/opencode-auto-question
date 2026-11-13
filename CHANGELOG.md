@@ -25,6 +25,11 @@ All notable changes to this project are documented here. The format follows
   "handler timed out" summary written.
 - Loading the config no longer mutates the built-in defaults when a file
   leaves a block out and validation repairs it.
+- On opencode 1.19 the plugin no longer claims to be inactive. 1.19 loads the
+  package through both its 1.x and its v2 plugin runtimes, so the v2 `setup`
+  stub ran next to the working 1.x `server` entry and printed "installed but
+  inactive" while questions were in fact being auto-answered. The stub now
+  warns only when no 1.x host has called `server` within 15 seconds.
 
 ## [0.1.2] - 2026-11-13
 
