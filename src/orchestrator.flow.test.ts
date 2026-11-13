@@ -71,19 +71,34 @@ describe("handleQuestionAsked decision flow", () => {
     )
   })
 
-  test("no gathered context and no immediate context skips the second decision", async () => {
-    h = createHarness({ agent: "autonomy", engine: [decide(0.5)], subagents: { context: "No relevant context found." } })
+  // Issue #3: a pass-1 answer between the two thresholds must not be replied
+  // when pass 2 learned nothing new (skipped or failed).
+  test("no gathered or immediate context: pass 1 between the thresholds defers to the human", async () => {
+    h = createHarness({ agent: "autonomy", engine: [decide(0.44)], subagents: { context: "No relevant context found." } })
     await handleQuestionAsked(h.deps, q(), "v1")
     expect(h.engineRequests).toHaveLength(1)
-    expect(h.replies()).toHaveLength(1)
-    expect(h.summaries()[0]).toContain("(pass 1 (no gathered context)")
+    expect(h.replies()).toHaveLength(0)
+    expect(h.summaries()).toHaveLength(1)
+    expect(h.summaries()[0]).toStartWith(
+      "[auto-question] Deferred to human — low confidence (llm confidence 0.44 below threshold 0.60)",
+    )
   })
 
-  test("a failed pass 2 keeps the pass 1 decision for thresholding", async () => {
+  test("a failed pass 2 holds the pass 1 decision to confidenceThreshold", async () => {
     h = createHarness({ agent: "autonomy", engine: [decide(0.5), { status: 500 }], subagents: { context: "Some facts." } })
     await handleQuestionAsked(h.deps, q(), "v1")
     expect(h.engineRequests).toHaveLength(2)
+    expect(h.replies()).toHaveLength(0)
+    expect(h.summaries()[0]).toContain("below threshold 0.60")
+  })
+
+  test("the same pass-1 confidence is replied once pass 2 re-decides with context", async () => {
+    // Control for the two tests above: fallbackThreshold applies to pass 2.
+    h = createHarness({ agent: "autonomy", engine: [decide(0.44), decide(0.44)], subagents: { context: "Some facts." } })
+    await handleQuestionAsked(h.deps, q(), "v1")
+    expect(h.engineRequests).toHaveLength(2)
     expect(h.replies()).toHaveLength(1)
+    expect(h.summaries()[0]).toContain("(pass 2, min confidence 0.44)")
   })
 
   test("an engine error defers to the human with the error as the reason", async () => {

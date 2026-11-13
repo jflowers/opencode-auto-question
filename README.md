@@ -46,7 +46,8 @@ Human gate? (HUMAN_GATE: marker, ── YES ──▶ human answers (TUI form)
 ║ subagent (has dewey, session-search, ...)     ║
 ║ → re-decide with gathered context as state    ║
 ╚═══════════════════════════════════════════════╝
-        │
+        │  (no context gathered, or pass 2 failed: the pass-1
+        │   decision already failed confidenceThreshold → human)
   confidence ≥ fallbackThreshold (0.35)? ── YES ──▶ reply
         │ NO
         ▼
@@ -188,7 +189,7 @@ Dewey's `dewey gate auto-answer` startup check refuses `/dewey-distill` independ
 | `engine` | `"auto"` | `"jev"`, `"llm"`, or `"auto"` (jev first, llm fallback) |
 | `jev` | auto-discovered | Carrier: explicit `apiKey`+`baseUrl`+`model` in config, else `OPENCODE_API_KEY` → OpenCode Zen (`jev-1.13`, ~$0.000013/call), else `OPENROUTER_API_KEY` → OpenRouter (`typesafe/jev-1.14`) |
 | `confidenceThreshold` | `0.6` | Pass 1 answers at or above this immediately |
-| `fallbackThreshold` | `0.35` | After pass 2, below this goes to the human |
+| `fallbackThreshold` | `0.35` | Applies only to a decision re-made in pass 2; below it goes to the human. When pass 2 doesn't run (no context) or fails, the pass-1 decision stays held to `confidenceThreshold` |
 | `immediateContext` | `true` | Fetch the model's reasoning text from the assistant message that called the question tool (tables, recommendations, etc.) and include as context for the decision engine |
 | `sessionSummary` | `true` | Inject a summary message into the session history after auto-answering or deferring to human (visible in the TUI, hidden from the model, keeps the session's agent/model) |
 | `contextGathering.agent` | `"auto-question-ctx"` | Subagent that gathers context |
