@@ -98,6 +98,13 @@
   // ends the run) instead of leaving them pending; a gate is never answered.
   "onDefer": "human",
 
+  // Every question's outcome is written as one JSON line to
+  // ~/.local/share/opencode-auto-question/results.jsonl. With resultTrailer,
+  // the answer the asking agent receives also ends with
+  // AUTO_QUESTION_RESULT {"outcome":...,"answer":...,"confidence":...,
+  // "pass":...,"engine":...,"model":...,"rationale":...}.
+  "resultTrailer": false,
+
   // Fetch the model's reasoning text from the assistant message that called the
   // question tool (tables, recommendations, detailed option descriptions) and
   // include it as context for the decision engine. Dramatically improves
@@ -116,8 +123,8 @@
   // deep-merged over the settings above for that agent's questions only.
   // Allowed keys: engine, jev, llm, confidenceThreshold, fallbackThreshold,
   // contextGathering, agentDecision, guidance (plus guidance.inheritGlobal),
-  // immediateContext, sessionSummary, handlerTimeoutMs, onDefer. Human gates always
-  // apply. Example:
+  // immediateContext, sessionSummary, handlerTimeoutMs, onDefer,
+  // resultTrailer. Human gates always apply. Example:
   //   "hud-supervisor": {
   //     "guidance": { "globalPath": "auto-question/hud-guidance", "projectPath": "", "inheritGlobal": false },
   //     "confidenceThreshold": 0.7,

@@ -111,5 +111,5 @@ export async function decideWithJev(
     return { ok: false, answers: [], confidences: [], engine: "jev", error: "unparsable Jev response" }
   }
 
-  return { ok: true, answers: parsed.answers, confidences: parsed.confidences, engine: "jev" }
+  return { ok: true, answers: parsed.answers, confidences: parsed.confidences, engine: "jev", model: carrier.model }
 }

@@ -256,3 +256,27 @@ describe("parseAgentResponse", () => {
     expect(parseAgentResponse("I will investigate the repo now.", 1)).toBeNull()
   })
 })
+
+describe("rationale", () => {
+  test("the LLM and agent contracts ask for one", () => {
+    expect(buildLlmMessages([], null).system).toContain('"rationale": "one sentence"')
+    expect(buildAgentPrompt([], "g", null)).toContain('"rationale": "one sentence"')
+  })
+
+  test("is parsed, flattened to one line and capped", () => {
+    const text = JSON.stringify({ answers: [["a"]], confidences: [0.9], rationale: "  The CI log\nshows it.  " })
+    expect(parseLlmResponse(text, 1)?.rationale).toBe("The CI log shows it.")
+    const long = JSON.stringify({ answers: [["a"]], confidences: [0.9], rationale: "x".repeat(500) })
+    expect(parseLlmResponse(long, 1)!.rationale!.length).toBe(300)
+    const agent = JSON.stringify({ answers: [["a"]], confidences: [0.9], covered: true, rationale: "Guidance rule 2." })
+    expect(parseAgentResponse(agent, 1)?.rationale).toBe("Guidance rule 2.")
+  })
+
+  test("is optional: missing, empty or non-string leaves it out", () => {
+    for (const rationale of [undefined, "", "   ", 42]) {
+      const text = JSON.stringify({ answers: [["a"]], confidences: [0.9], rationale })
+      expect(parseLlmResponse(text, 1)).toEqual({ answers: [["a"]], confidences: [0.9] })
+    }
+  })
+})
+

@@ -13,6 +13,14 @@ All notable changes to this project are documented here. The format follows
   `NO_SECOND_OPINION: deferred (...)` marker so a headless run continues, and
   a `HUMAN_GATE:` question is rejected, which ends the run, instead of being
   left pending. The default `"human"` keeps today's behavior.
+- Structured results (#10): every question from an auto-answered agent is
+  recorded as one JSON line in `results.jsonl` (answer, confidence, pass,
+  engine, model, rationale, reason), for answered, deferred, gated and
+  timed-out questions. `resultTrailer: true` (top level or per profile) also
+  appends `AUTO_QUESTION_RESULT {json}` to the answer the asking agent
+  receives, including a `NO_SECOND_OPINION:` marker reply.
+- The LLM and guidance-agent engines are asked for a one-sentence
+  `rationale`, and every engine reports the model that decided.
 - Per-agent `profiles` (#8): overrides for one agent's questions (engine,
   models, thresholds, guidance, context, summary, timeout), deep-merged over
   the top-level settings. `guidance.inheritGlobal: false` in a profile drops

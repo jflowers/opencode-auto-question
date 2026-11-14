@@ -26,6 +26,7 @@ const base: Config = {
   },
   handlerTimeoutMs: 120000,
   onDefer: "human",
+  resultTrailer: false,
   immediateContext: true,
   sessionSummary: true,
   verbose: false,

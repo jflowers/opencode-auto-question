@@ -12,9 +12,10 @@ import { join } from "node:path"
 import { DEFAULT_CONFIG } from "./config"
 import { AgentTracker } from "./detect"
 import type { HandlerDeps } from "./orchestrator"
+import type { ResultRecord } from "./result"
 import type { Config, QuestionInfo, QuestionRequest } from "./types"
 
-type EngineDecision = { answers: string[][]; confidences: number[] }
+type EngineDecision = { answers: string[][]; confidences: number[]; rationale?: string }
 
 /**
  * One LLM engine response: a decision, an HTTP error status, a fetch that
@@ -46,6 +47,8 @@ export interface Harness {
   engineRequests: any[]
   replies(): Array<{ url: string; body: any }>
   summaries(): string[]
+  /** Result records settle() produced (captured instead of written to results.jsonl). */
+  results: ResultRecord[]
   /** Titles of child sessions created for subagents. */
   childSessions(): string[]
   cleanup(): void
@@ -154,7 +157,15 @@ export function createHarness(opts: HarnessOptions = {}): Harness {
     // AgentTracker.resolve fallback when no agent was tracked.
     session: { messages: async () => ({ data: [] }) },
   }
-  const deps: HandlerDeps = { input: { client } as any, config, tracker, settled: new Set(), projectDir }
+  const results: ResultRecord[] = []
+  const deps: HandlerDeps = {
+    input: { client } as any,
+    config,
+    tracker,
+    settled: new Set(),
+    projectDir,
+    recordResult: (record) => results.push(record),
+  }
 
   globalThis.fetch = stubFetch
 
@@ -166,6 +177,7 @@ export function createHarness(opts: HarnessOptions = {}): Harness {
     engineRequests,
     replies: () => posts.filter(isReply),
     summaries: () => posts.filter(isSummary).map((p) => p.body.parts[0].text as string),
+    results,
     childSessions: () => [...childTitles.values()],
     cleanup: () => {
       globalThis.fetch = realFetch

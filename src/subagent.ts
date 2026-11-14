@@ -29,6 +29,17 @@ function withTimeout<T>(work: Promise<T>, ms: number): Promise<T | null> {
  * Returns null on any failure (creation error, timeout, empty response).
  */
 export async function runSubagent(input: PluginInput, opts: SubagentOptions): Promise<string | null> {
+  return (await runSubagentDetailed(input, opts))?.text ?? null
+}
+
+/**
+ * runSubagent, plus the model that produced the reply ("provider/model")
+ * when the server reports it on the assistant message.
+ */
+export async function runSubagentDetailed(
+  input: PluginInput,
+  opts: SubagentOptions,
+): Promise<{ text: string; model?: string } | null> {
   const httpClient = (input.client as any)._client
   let sessionID: string | undefined
 
@@ -65,7 +76,13 @@ export async function runSubagent(input: PluginInput, opts: SubagentOptions): Pr
       .map((p) => p.text)
       .join("\n\n")
       .trim()
-    return text || null
+    if (!text) return null
+    const info = result?.data?.info
+    const model =
+      typeof info?.providerID === "string" && typeof info?.modelID === "string"
+        ? `${info.providerID}/${info.modelID}`
+        : undefined
+    return model ? { text, model } : { text }
   } catch (e) {
     log("warn", "subagent run failed", { error: String(e), title: opts.title })
     return null

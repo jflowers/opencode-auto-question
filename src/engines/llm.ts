@@ -72,5 +72,12 @@ export async function decideWithLlm(
     return { ok: false, answers: [], confidences: [], engine: "llm", error: "unparsable LLM JSON contract response" }
   }
 
-  return { ok: true, answers: parsed.answers, confidences: parsed.confidences, engine: "llm" }
+  return {
+    ok: true,
+    answers: parsed.answers,
+    confidences: parsed.confidences,
+    engine: "llm",
+    model: config.llm.model,
+    ...(parsed.rationale ? { rationale: parsed.rationale } : {}),
+  }
 }

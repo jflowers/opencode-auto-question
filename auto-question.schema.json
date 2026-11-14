@@ -190,6 +190,11 @@
       "default": "human",
       "description": "What happens to a question that is not auto-answered (low confidence, engine failure, timeout). human: it stays pending for the TUI form. reject: it is answered with a NO_SECOND_OPINION: marker so a headless run continues, and a HUMAN_GATE: question is rejected (ending the run) rather than left pending."
     },
+    "resultTrailer": {
+      "type": "boolean",
+      "default": false,
+      "description": "Append AUTO_QUESTION_RESULT {json} (outcome, answer, confidence, pass, engine, model, rationale, reason) as the last element of the last question's answer. The record is written to results.jsonl either way."
+    },
     "verbose": {
       "type": "boolean",
       "default": false
@@ -342,6 +347,10 @@
               "reject"
             ],
             "description": "What happens to a question that is not auto-answered (low confidence, engine failure, timeout). human: it stays pending for the TUI form. reject: it is answered with a NO_SECOND_OPINION: marker so a headless run continues, and a HUMAN_GATE: question is rejected (ending the run) rather than left pending."
+          },
+          "resultTrailer": {
+            "type": "boolean",
+            "description": "Append AUTO_QUESTION_RESULT {json} (outcome, answer, confidence, pass, engine, model, rationale, reason) as the last element of the last question's answer. The record is written to results.jsonl either way."
           }
         }
       }

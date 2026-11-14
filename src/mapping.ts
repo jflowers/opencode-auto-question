@@ -149,7 +149,8 @@ export function buildLlmMessages(
     '- Select option labels exactly as written. For multi-select questions, include every label that applies.',
     "- If no option is clearly right and the question accepts custom answers, you may provide a short custom answer instead.",
     "- Estimate confidence for each answer between 0.0 and 1.0. Be honest: use low confidence when you are guessing.",
-    '- Respond with ONLY a JSON object (no markdown fences) matching exactly: {"answers": [["selected label", ...], ...], "confidences": [0.0, ...]}',
+    '- Respond with ONLY a JSON object (no markdown fences) matching exactly: {"answers": [["selected label", ...], ...], "confidences": [0.0, ...], "rationale": "one sentence"}',
+    "- rationale: one short sentence on why, citing the deciding fact.",
     "- answers: one array per question, in order, holding the selected option label(s) or a single custom answer string.",
     "- confidences: one number per question, in order.",
   ].join("\n")
@@ -188,10 +189,11 @@ export function buildAgentPrompt(
   lines.push(formatQuestions(questions))
   lines.push("")
   lines.push("Investigate the workspace with your tools as the guidance instructs, then decide the answers the user would give.")
-  lines.push('Respond with ONLY a JSON object (no markdown fences, no prose): {"answers": [["selected label", ...], ...], "confidences": [0.0, ...], "covered": true}')
+  lines.push('Respond with ONLY a JSON object (no markdown fences, no prose): {"answers": [["selected label", ...], ...], "confidences": [0.0, ...], "covered": true, "rationale": "one sentence"}')
   lines.push("- answers: one array per question, in order, holding the selected option label(s) or a single custom answer string.")
   lines.push("- confidences: one number per question, in order. Be honest: use low confidence when you are guessing.")
   lines.push("- covered: true when the project guidance addresses these questions, false when it does not.")
+  lines.push("- rationale: one short sentence on why, citing the deciding fact.")
   return lines.join("\n")
 }
 
@@ -212,6 +214,17 @@ function extractJsonPayload(text: string): Record<string, unknown> | null {
   }
   if (payload === null || typeof payload !== "object" || Array.isArray(payload)) return null
   return payload as Record<string, unknown>
+}
+
+/** Max characters kept from an engine's rationale. */
+export const RATIONALE_MAX_CHARS = 300
+
+/** The optional one-line rationale from an engine's JSON reply. */
+function parseRationale(p: Record<string, unknown>): string | undefined {
+  if (typeof p.rationale !== "string") return undefined
+  const flat = p.rationale.replace(/\s+/g, " ").trim()
+  if (!flat) return undefined
+  return flat.length > RATIONALE_MAX_CHARS ? flat.slice(0, RATIONALE_MAX_CHARS - 3) + "..." : flat
 }
 
 function parseAnswersConfidences(
@@ -242,20 +255,24 @@ function parseAnswersConfidences(
 export function parseLlmResponse(
   text: string,
   questionCount: number,
-): { answers: string[][]; confidences: number[] } | null {
+): { answers: string[][]; confidences: number[]; rationale?: string } | null {
   const p = extractJsonPayload(text)
   if (!p) return null
-  return parseAnswersConfidences(p, questionCount)
+  const parsed = parseAnswersConfidences(p, questionCount)
+  if (!parsed) return null
+  const rationale = parseRationale(p)
+  return rationale ? { ...parsed, rationale } : parsed
 }
 
 /** Like parseLlmResponse, plus the agent engine's "covered" flag. */
 export function parseAgentResponse(
   text: string,
   questionCount: number,
-): { answers: string[][]; confidences: number[]; covered: boolean } | null {
+): { answers: string[][]; confidences: number[]; covered: boolean; rationale?: string } | null {
   const p = extractJsonPayload(text)
   if (!p) return null
   const parsed = parseAnswersConfidences(p, questionCount)
   if (!parsed) return null
-  return { ...parsed, covered: p.covered === true }
+  const rationale = parseRationale(p)
+  return { ...parsed, covered: p.covered === true, ...(rationale ? { rationale } : {}) }
 }

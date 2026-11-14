@@ -380,4 +380,13 @@ describe("profiles", () => {
       /profiles\.hud-supervisor: onDefer must be one of/,
     )
   })
+
+  test("resultTrailer defaults to false, can be set per profile, and must be a boolean", () => {
+    expect(load({}).resultTrailer).toBe(false)
+    const config = load({ ...base, profiles: { "hud-supervisor": { resultTrailer: true } } })
+    expect(configForAgent(config, "hud-supervisor").resultTrailer).toBe(true)
+    expect(configForAgent(config, "autonomy").resultTrailer).toBe(false)
+    expect(() => load({ resultTrailer: "yes" })).toThrow(/resultTrailer must be a boolean/)
+  })
 })
+

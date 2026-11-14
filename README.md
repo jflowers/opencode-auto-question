@@ -225,6 +225,7 @@ Dewey's `dewey gate auto-answer` startup check refuses `/dewey-distill` independ
 | `guidance.globalPath` | `"~/.config/opencode/auto-question/guidance"` | Global guidance dir. A relative path is relative to the config file that sets it. `""` loads no global guidance |
 | `guidance.maxChars` | `20000` | Total guidance characters passed to the decision agent |
 | `handlerTimeoutMs` | `120000` | Hard cap per question request |
+| `resultTrailer` | `false` | Append `AUTO_QUESTION_RESULT {json}` to the answer the asking agent receives. See [Results](#results) |
 | `onDefer` | `"human"` | A question that isn't auto-answered: `"human"` leaves it pending for the TUI form; `"reject"` answers it with a `NO_SECOND_OPINION:` marker so headless runs continue. See [Headless runs](#headless-runs-ondefer) |
 | `profiles` | `{}` | Per-agent overrides; see [Profiles](#profiles) |
 
@@ -248,6 +249,30 @@ With `"onDefer": "reject"`, set at the top level or per profile:
 - **Deferred questions:** each question in the request gets one answer, a marker the asking agent can act on, for example `NO_SECOND_OPINION: deferred (confidence 0.31 < 0.35, pass 2)` or `NO_SECOND_OPINION: deferred — LLM API 503 (pass 1 (no gathered context))`. The run continues, at the latest after `handlerTimeoutMs`.
 - **`HUMAN_GATE:` questions:** these are rejected, never answered. opencode ends the agent's turn on a rejected question, so the run finishes instead of hanging, and the session summary records `HUMAN_GATE_UNANSWERED`. Questions from agents in `humanGatedAgents` aren't touched; those agents are never auto-answered.
 
+### Results
+
+Every question from an auto-answered agent ends with one JSON line in `~/.local/share/opencode-auto-question/results.jsonl`, keyed by `requestID` and `sessionID`. That includes questions answered, deferred, left for the human, rejected as a human gate, and timed out. Questions from other agents aren't recorded.
+
+```json
+{"v":1,"time":"…","requestID":"que_…","sessionID":"ses_…","agent":"hud-supervisor","outcome":"answered","action":"replied","answer":"Agree","answers":[["Agree"]],"confidence":0.82,"confidences":[0.82],"threshold":null,"pass":2,"passDetail":"pass 2","engine":"llm","model":"qwen/qwen3-235b-a22b","rationale":"The failing check and the fix touch the same lockfile.","reason":null}
+```
+
+- `outcome`: `answered`, `deferred`, `gated` or `timeout`.
+- `action`: what the plugin did: `replied`, `marker` (a `NO_SECOND_OPINION:` reply under `onDefer: "reject"`), `rejected` (a human gate under `"reject"`) or `left_for_human`.
+- `answer`: the labels joined with `", "` when there is one question, otherwise `null`. It is `null` whenever the question wasn't answered.
+- `confidence`: the lowest per-question confidence of the decision that counted, or of the one that fell short.
+- `pass`: 0 (guidance agent), 1 or 2.
+- `model`: the engine's model. For the guidance agent, the subagent's model when opencode reports it, else `agent:<name>`.
+- `rationale`: one sentence from the LLM or guidance-agent engine. Jev gives none.
+
+With `"resultTrailer": true` (top level or per profile), any reply the asking agent receives also ends with the record in compact form: no ids or time, and `answers` only when there are several questions. It is added as the last element of the last question's answer:
+
+```text
+"Does #1031 fix the OSV-Scanner failure?"="Agree, AUTO_QUESTION_RESULT {"outcome":"answered","answer":"Agree","confidence":0.82,"pass":2,"engine":"llm","model":"qwen/qwen3-235b-a22b","rationale":"…"}"
+```
+
+A `NO_SECOND_OPINION:` marker reply carries it too. A rejected human gate, or a question left for the human, gets no reply to carry it, so its record is only in `results.jsonl`.
+
 ### Profiles
 
 Every agent in `agents` shares the top-level settings unless it has a profile. A profile is keyed by agent name (case-insensitive) and deep-merged over the top-level settings for that agent's questions only:
@@ -265,7 +290,7 @@ Every agent in `agents` shares the top-level settings unless it has a profile. A
 }
 ```
 
-A profile can set `engine`, `jev`, `llm`, `confidenceThreshold`, `fallbackThreshold`, `contextGathering`, `agentDecision`, `guidance`, `immediateContext`, `sessionSummary`, `handlerTimeoutMs` and `onDefer`. Any other key is ignored with a logged error. Human gates are checked before a profile applies, and `agents`, `humanGatedAgents` and `enabled` can't be set per profile, so a profile can't weaken a gate.
+A profile can set `engine`, `jev`, `llm`, `confidenceThreshold`, `fallbackThreshold`, `contextGathering`, `agentDecision`, `guidance`, `immediateContext`, `sessionSummary`, `handlerTimeoutMs`, `onDefer` and `resultTrailer`. Any other key is ignored with a logged error. Human gates are checked before a profile applies, and `agents`, `humanGatedAgents` and `enabled` can't be set per profile, so a profile can't weaken a gate.
 
 Guidance in a profile:
 - With its own `globalPath`, the profile loads the top-level global guidance first, then its own, then the project's.
@@ -282,7 +307,7 @@ Profile values are checked when the config loads. An invalid value names the pro
 - Session-agent detection uses user-message events plus a session-messages fallback (the v1.19 session type has no agent field).
 - Context gathering creates a temporary child session (deleted afterwards) that inherits the project directory, so per-project tools like dewey MCP are available to the context subagent.
 - The pass-0 decision agent runs in the same kind of temporary child session; the project directory is resolved from the opencode launch directory (`input.directory`), so guidance is read from the project opencode was started in.
-- Decisions and errors are logged to `~/.local/share/opencode-auto-question/log.txt` (set `"verbose": true` for debug detail).
+- Decisions and errors are logged to `~/.local/share/opencode-auto-question/log.txt` (set `"verbose": true` for debug detail); one structured record per question goes to `results.jsonl` next to it. Each file is truncated once it passes 2 MB.
 - **Session summaries**: when `sessionSummary` is enabled (default), the plugin injects a visible `noReply` message into the session history after auto-answering or deferring to human. This shows the engine used, confidence scores, and which answers were selected (or why the question was deferred). The message carries the latest user message's agent/model/variant/system/format — without those, opencode stamps a new user message with the default agent and switches the session to `build` mid-run — and its text part is marked `ignored`, so it shows in the history but stays out of the model's context. Set `"sessionSummary": false` to disable.
 - If the human answers first, the plugin's reply fails harmlessly (the pending request is gone) and it moves on.
 
