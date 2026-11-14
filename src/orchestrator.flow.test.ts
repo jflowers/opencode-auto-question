@@ -268,4 +268,97 @@ describe("handleQuestionAsked decision flow", () => {
       expect(h.replies()).toHaveLength(0)
     })
   })
+
+  describe("onDefer: reject", () => {
+    const reject = { onDefer: "reject" as const }
+    const markerReply = (h: Harness) => h.replies()[0]?.body.answers as string[][] | undefined
+    const rejects = (h: Harness) => h.posts.filter((p) => p.url.endsWith("/reject")).map((p) => p.url)
+
+    test("an answered question is replied as usual", async () => {
+      h = createHarness({ agent: "autonomy", engine: [decide(0.9)], config: reject })
+      await handleQuestionAsked(h.deps, q(), "v1")
+      expect(markerReply(h)).toEqual([["sqlite"]])
+    })
+
+    test("low confidence after pass 2 is answered with a NO_SECOND_OPINION marker", async () => {
+      h = createHarness({
+        agent: "autonomy",
+        engine: [decide(0.3), decide(0.31)],
+        subagents: { context: "Some facts." },
+        config: reject,
+      })
+      await handleQuestionAsked(h.deps, q(), "v1")
+      expect(markerReply(h)).toEqual([["NO_SECOND_OPINION: deferred (confidence 0.31 < 0.35, pass 2)"]])
+      expect(rejects(h)).toEqual([])
+      expect(h.summaries()[0]).toStartWith("[auto-question] Not answered (onDefer: reject) — replied NO_SECOND_OPINION")
+    })
+
+    test("every question in the request gets the marker", async () => {
+      h = createHarness({
+        agent: "autonomy",
+        engine: [{ answers: [["sqlite"], ["postgres"]], confidences: [0.9, 0.2] }],
+        subagents: { context: null },
+        config: reject,
+      })
+      await handleQuestionAsked(h.deps, request([question("Which database?"), question("Which cache?")]), "v2")
+      expect(h.replies()[0]!.url).toBe("/api/session/ses_1/question/que_1/reply")
+      const answers = markerReply(h)!
+      expect(answers).toHaveLength(2)
+      for (const a of answers) expect(a[0]).toStartWith("NO_SECOND_OPINION: deferred (confidence 0.20 < 0.60, pass 1")
+    })
+
+    test("an engine failure is answered with the error in the marker", async () => {
+      h = createHarness({ agent: "autonomy", engine: [{ status: 503 }], subagents: { context: null }, config: reject })
+      await handleQuestionAsked(h.deps, q(), "v1")
+      expect(markerReply(h)![0]![0]).toStartWith("NO_SECOND_OPINION: deferred — LLM API 503")
+    })
+
+    test("guidance covered but unconfident is answered with the reason", async () => {
+      const decision = JSON.stringify({ answers: [["sqlite"]], confidences: [0.4], covered: true })
+      h = createHarness({ agent: "autonomy", engine: [decide(0.99)], guidance: "Prefer sqlite.", subagents: { decision }, config: reject })
+      await handleQuestionAsked(h.deps, q(), "v1")
+      expect(h.engineRequests).toHaveLength(0)
+      expect(markerReply(h)).toEqual([
+        [
+          "NO_SECOND_OPINION: deferred — project guidance covered the question but the decision agent was not confident (confidence 0.40 < 0.60, pass 0)",
+        ],
+      ])
+    })
+
+    test("a handler timeout is answered within handlerTimeoutMs", async () => {
+      h = createHarness({ agent: "autonomy", engine: ["hang"], config: { ...reject, handlerTimeoutMs: 20 } })
+      const started = Date.now()
+      await handleQuestionAsked(h.deps, q(), "v1")
+      expect(Date.now() - started).toBeLessThan(1000)
+      expect(markerReply(h)).toEqual([["NO_SECOND_OPINION: deferred (handler timed out after 0s)"]])
+    })
+
+    test("a HUMAN_GATE question is rejected, never answered", async () => {
+      h = createHarness({ agent: "autonomy", engine: [decide(0.99)], config: reject })
+      await handleQuestionAsked(h.deps, request([question("HUMAN_GATE: Promote?")]), "v2")
+      expect(h.engineRequests).toHaveLength(0)
+      expect(h.replies()).toEqual([])
+      expect(rejects(h)).toEqual(["/api/session/ses_1/question/que_1/reject"])
+      expect(h.summaries()[0]).toStartWith("[auto-question] Rejected (onDefer: reject) — HUMAN_GATE_UNANSWERED:")
+    })
+
+    test("onDefer human leaves a HUMAN_GATE question pending, as before", async () => {
+      h = createHarness({ agent: "autonomy", engine: [decide(0.99)] })
+      await handleQuestionAsked(h.deps, request([question("HUMAN_GATE: Promote?")]), "v1")
+      expect(h.replies()).toEqual([])
+      expect(rejects(h)).toEqual([])
+    })
+
+    test("onDefer can be set per profile", async () => {
+      const config = { agents: ["autonomy", "hud-supervisor"], profiles: { "hud-supervisor": reject } }
+      h = createHarness({ agent: "hud-supervisor", engine: [decide(0.2)], subagents: { context: null }, config })
+      await handleQuestionAsked(h.deps, q(), "v1")
+      expect(markerReply(h)![0]![0]).toStartWith("NO_SECOND_OPINION:")
+      h.cleanup()
+
+      h = createHarness({ agent: "autonomy", engine: [decide(0.2)], subagents: { context: null }, config })
+      await handleQuestionAsked(h.deps, q(), "v1")
+      expect(h.replies()).toEqual([])
+    })
+  })
 })

@@ -91,6 +91,13 @@
   // Hard cap for the entire auto-answer attempt per question request.
   "handlerTimeoutMs": 120000,
 
+  // A question the plugin does not answer (low confidence, engine failure,
+  // timeout): "human" leaves it pending for the TUI form. "reject" answers it
+  // with "NO_SECOND_OPINION: deferred (...)" so a headless `opencode run`
+  // continues instead of hanging, and rejects HUMAN_GATE: questions (which
+  // ends the run) instead of leaving them pending; a gate is never answered.
+  "onDefer": "human",
+
   // Fetch the model's reasoning text from the assistant message that called the
   // question tool (tables, recommendations, detailed option descriptions) and
   // include it as context for the decision engine. Dramatically improves
@@ -109,7 +116,7 @@
   // deep-merged over the settings above for that agent's questions only.
   // Allowed keys: engine, jev, llm, confidenceThreshold, fallbackThreshold,
   // contextGathering, agentDecision, guidance (plus guidance.inheritGlobal),
-  // immediateContext, sessionSummary, handlerTimeoutMs. Human gates always
+  // immediateContext, sessionSummary, handlerTimeoutMs, onDefer. Human gates always
   // apply. Example:
   //   "hud-supervisor": {
   //     "guidance": { "globalPath": "auto-question/hud-guidance", "projectPath": "", "inheritGlobal": false },

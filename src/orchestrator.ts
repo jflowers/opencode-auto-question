@@ -213,14 +213,17 @@ function logDecision(pass: string, requestID: string, decision: Decision): void 
   }
 }
 
+/** POST to a question's reply or reject endpoint for the event's API version. */
+function questionUrl(request: QuestionRequest, version: "v1" | "v2", action: "reply" | "reject"): string {
+  return version === "v1"
+    ? `/question/${request.id}/${action}`
+    : `/api/session/${request.sessionID}/question/${request.id}/${action}`
+}
+
 async function reply(deps: HandlerDeps, request: QuestionRequest, decision: Decision, version: "v1" | "v2", pass: string): Promise<void> {
   const httpClient = (deps.input.client as any)._client
-  const url =
-    version === "v1"
-      ? `/question/${request.id}/reply`
-      : `/api/session/${request.sessionID}/question/${request.id}/reply`
   try {
-    await httpClient.post({ url, body: { answers: decision.answers } })
+    await httpClient.post({ url: questionUrl(request, version, "reply"), body: { answers: decision.answers } })
     log("info", "auto-answered", {
       requestID: request.id,
       sessionID: request.sessionID,
@@ -232,6 +235,35 @@ async function reply(deps: HandlerDeps, request: QuestionRequest, decision: Deci
   } catch (e) {
     // The human likely answered first (request removed from the pending map → 404).
     log("warn", "reply failed — human may have answered first", { requestID: request.id, error: String(e) })
+  }
+}
+
+/**
+ * onDefer "reject" for a deferred question: answer every question with the
+ * marker, so the asking agent gets a tool result it can act on and the run
+ * continues. (A real reject would end the agent's turn.)
+ */
+async function replyMarker(deps: HandlerDeps, request: QuestionRequest, version: "v1" | "v2", marker: string): Promise<void> {
+  const httpClient = (deps.input.client as any)._client
+  try {
+    await httpClient.post({
+      url: questionUrl(request, version, "reply"),
+      body: { answers: request.questions.map(() => [marker]) },
+    })
+    log("info", "declined with marker (onDefer: reject)", { requestID: request.id, sessionID: request.sessionID, marker })
+  } catch (e) {
+    log("warn", "marker reply failed — human may have answered first", { requestID: request.id, error: String(e) })
+  }
+}
+
+/** onDefer "reject" for a human gate: reject the question, never answer it. */
+async function reject(deps: HandlerDeps, request: QuestionRequest, version: "v1" | "v2", reason: string): Promise<void> {
+  const httpClient = (deps.input.client as any)._client
+  try {
+    await httpClient.post({ url: questionUrl(request, version, "reject") })
+    log("info", "rejected human gate (onDefer: reject)", { requestID: request.id, sessionID: request.sessionID, reason })
+  } catch (e) {
+    log("warn", "reject failed — human may have answered first", { requestID: request.id, error: String(e) })
   }
 }
 
@@ -403,8 +435,43 @@ export async function decideOutcome(deps: HandlerDeps, request: QuestionRequest)
   }
 }
 
+/** Marker the asking agent receives for a deferred question under onDefer "reject". */
+export const NO_SECOND_OPINION = "NO_SECOND_OPINION"
+/** Marker recorded for a human gate rejected under onDefer "reject". */
+export const HUMAN_GATE_UNANSWERED = "HUMAN_GATE_UNANSWERED"
+
+function oneLine(text: string, max = 200): string {
+  const flat = text.replace(/\s+/g, " ").trim()
+  return flat.length > max ? flat.slice(0, max - 3) + "..." : flat
+}
+
+/**
+ * The answer a deferred or timed-out question gets under onDefer "reject",
+ * e.g. `NO_SECOND_OPINION: deferred (confidence 0.31 < 0.35, pass 2)`.
+ */
+export function deferMarker(outcome: Extract<Outcome, { kind: "deferred" | "timeout" }>): string {
+  if (outcome.kind === "timeout") {
+    return `${NO_SECOND_OPINION}: deferred (handler timed out after ${Math.round(outcome.timeoutMs / 1000)}s)`
+  }
+  const { decision, reason, threshold, pass } = outcome
+  const details: string[] = []
+  if (decision?.ok) details.push(`confidence ${minConfidence(decision).toFixed(2)} < ${threshold.toFixed(2)}`)
+  details.push(pass)
+  const why = decision?.ok && reason === "low confidence" ? "" : ` — ${oneLine(reason)}`
+  return `${NO_SECOND_OPINION}: deferred${why} (${details.join(", ")})`
+}
+
 /** The session summary text for an outcome. */
-export function summaryText(request: QuestionRequest, outcome: Outcome): string {
+export function summaryText(request: QuestionRequest, outcome: Outcome, onDefer: Config["onDefer"] = "human"): string {
+  if (onDefer === "reject") {
+    switch (outcome.kind) {
+      case "deferred":
+      case "timeout":
+        return `[auto-question] Not answered (onDefer: reject) — replied ${deferMarker(outcome)}`
+      case "gated":
+        return `[auto-question] Rejected (onDefer: reject) — ${HUMAN_GATE_UNANSWERED}: ${outcome.reason}`
+    }
+  }
   switch (outcome.kind) {
     case "answered":
       return formatAutoAnswered(request, outcome.decision, outcome.pass)
@@ -418,8 +485,10 @@ export function summaryText(request: QuestionRequest, outcome: Outcome): string 
 }
 
 /**
- * Act on an outcome: reply when answered (otherwise the question stays
- * pending for the human), then write the session summary.
+ * Act on an outcome. Answered: reply. Otherwise, with onDefer "human" the
+ * question stays pending for the human; with "reject", a deferred or
+ * timed-out question is answered with a NO_SECOND_OPINION: marker and a
+ * human gate is rejected (never answered). Then write the session summary.
  */
 async function settle(
   deps: HandlerDeps,
@@ -427,11 +496,15 @@ async function settle(
   version: "v1" | "v2",
   outcome: Outcome,
 ): Promise<void> {
+  const { onDefer } = deps.config
   if (outcome.kind === "answered") {
     await reply(deps, request, outcome.decision, version, outcome.pass)
+  } else if (onDefer === "reject") {
+    if (outcome.kind === "gated") await reject(deps, request, version, outcome.reason)
+    else await replyMarker(deps, request, version, deferMarker(outcome))
   }
   if (deps.config.sessionSummary) {
-    await injectSummary(deps, request.sessionID, summaryText(request, outcome))
+    await injectSummary(deps, request.sessionID, summaryText(request, outcome, onDefer))
   }
 }
 
