@@ -394,8 +394,12 @@ function normalizeProfiles(config: Config, warn: (message: string) => void): Rec
     }
     if (isHumanGatedAgent(name, config.humanGatedAgents)) {
       warn(`profiles.${name}: "${name}" is human-gated, so its questions are never auto-answered and this profile is unused`)
-    } else if (!config.agents.some((a) => a.toLowerCase() === key)) {
-      warn(`profiles.${name}: "${name}" is not in "agents", so this profile is unused`)
+    } else if (!config.secondOpinion.enabled && !config.agents.some((a) => a.toLowerCase() === key)) {
+      // With second_opinion on, the profile applies to that agent's tool
+      // calls whether or not its questions are auto-answered.
+      warn(
+        `profiles.${name}: "${name}" is not in "agents" and secondOpinion is off, so this profile is unused`,
+      )
     }
     // Validate the merged result now (throws with the profile named).
     resolveProfile(config, kept as ProfileConfig, `profiles.${name}: `)
