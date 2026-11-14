@@ -125,6 +125,18 @@ describe("runSecondOpinion", () => {
     expect(record.model).toBe("deepseek/deepseek-v4")
   })
 
+  test("an alternate model is used when the profile's model is the caller's own", async () => {
+    h = createHarness({
+      agent: "hud-supervisor",
+      askerModel: "openrouter/z-ai/glm-5.3",
+      engine: [decide(0.9)],
+      config: { profiles: { "hud-supervisor": { llm: { model: "z-ai/glm-5.3", alternateModels: ["deepseek/deepseek-v4"] } } } },
+    })
+    const record = await runSecondOpinion(h.deps, args(), ctx())
+    expect(h.engineRequests[0].model).toBe("deepseek/deepseek-v4")
+    expect(record.model).toBe("deepseek/deepseek-v4")
+  })
+
   test("human gates are never answered", async () => {
     h = createHarness({ agent: "hud-supervisor", engine: [decide(0.99)] })
     const marked = await runSecondOpinion(h.deps, args({ question: "HUMAN_GATE: Merge it?" }), ctx())

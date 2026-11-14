@@ -34,6 +34,8 @@ export interface HarnessOptions {
   subagents?: SubagentReplies
   /** Guidance markdown written to the project guidance dir (enables pass 0). */
   guidance?: string
+  /** The asking session's model ("provider/model"), as the tracker sees it on an assistant message. */
+  askerModel?: string
   /** Assistant message text served for request.tool.messageID (immediate context). */
   assistantText?: string
   config?: Partial<Config>
@@ -152,6 +154,15 @@ export function createHarness(opts: HarnessOptions = {}): Harness {
   }
   const tracker = new AgentTracker()
   if (opts.agent !== undefined) tracker.trackMessage({ sessionID: "ses_1", role: "user", agent: opts.agent })
+  if (opts.askerModel !== undefined) {
+    const slash = opts.askerModel.indexOf("/")
+    tracker.trackMessage({
+      sessionID: "ses_1",
+      role: "assistant",
+      providerID: opts.askerModel.slice(0, slash),
+      modelID: opts.askerModel.slice(slash + 1),
+    })
+  }
   const client = {
     _client: httpClient,
     // AgentTracker.resolve fallback when no agent was tracked.

@@ -25,6 +25,12 @@ All notable changes to this project are documented here. The format follows
   agent's profile, never reads the caller's message, and never waits for a
   human. When enabled it is denied globally unless configured; allow it per
   agent (`second_opinion: allow`). The bundled `autonomy` agent denies it.
+- Model choice for a second opinion (#11), top level or per profile:
+  `contextGathering.model` and `agentDecision.model` run those subagents on
+  a given `"provider/model"`, and `llm.alternateModels` replaces `llm.model`
+  when it is the asking session's own model (matched by model name), so the
+  second opinion doesn't come from the asker's model. With no alternate, a
+  warning is logged.
 - The LLM and guidance-agent engines are asked for a one-sentence
   `rationale`, and every engine reports the model that decided.
 - Per-agent `profiles` (#8): overrides for one agent's questions (engine,

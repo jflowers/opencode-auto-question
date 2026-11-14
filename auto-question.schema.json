@@ -93,6 +93,15 @@
           "type": "integer",
           "minimum": 1,
           "default": 60000
+        },
+        "alternateModels": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Models used instead of model when it is the asking session's own model (compared by model name, whatever the provider), so the second opinion comes from a different model. The first that differs from the asker is used; with none, model is kept and a warning logged.",
+          "default": []
         }
       }
     },
@@ -119,6 +128,11 @@
           "type": "string",
           "default": "auto-question-ctx"
         },
+        "model": {
+          "type": "string",
+          "description": "\"provider/model\" to run this subagent with (opencode provider and model ids, e.g. \"openrouter/qwen/qwen3-coder\"). Empty uses the agent's own model.",
+          "default": ""
+        },
         "timeoutMs": {
           "type": "integer",
           "minimum": 1,
@@ -134,6 +148,11 @@
         "agent": {
           "type": "string",
           "default": "auto-question-decide"
+        },
+        "model": {
+          "type": "string",
+          "description": "\"provider/model\" to run this subagent with (opencode provider and model ids, e.g. \"openrouter/qwen/qwen3-coder\"). Empty uses the agent's own model.",
+          "default": ""
         },
         "timeoutMs": {
           "type": "integer",
@@ -273,6 +292,14 @@
               "timeoutMs": {
                 "type": "integer",
                 "minimum": 1
+              },
+              "alternateModels": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "description": "Models used instead of model when it is the asking session's own model (compared by model name, whatever the provider), so the second opinion comes from a different model. The first that differs from the asker is used; with none, model is kept and a warning logged."
               }
             }
           },
@@ -296,6 +323,10 @@
               "agent": {
                 "type": "string"
               },
+              "model": {
+                "type": "string",
+                "description": "\"provider/model\" to run this subagent with (opencode provider and model ids, e.g. \"openrouter/qwen/qwen3-coder\"). Empty uses the agent's own model."
+              },
               "timeoutMs": {
                 "type": "integer",
                 "minimum": 1
@@ -309,6 +340,10 @@
             "properties": {
               "agent": {
                 "type": "string"
+              },
+              "model": {
+                "type": "string",
+                "description": "\"provider/model\" to run this subagent with (opencode provider and model ids, e.g. \"openrouter/qwen/qwen3-coder\"). Empty uses the agent's own model."
               },
               "timeoutMs": {
                 "type": "integer",

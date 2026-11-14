@@ -3,6 +3,7 @@ import type { ToolContext, ToolDefinition, ToolResult } from "@opencode-ai/plugi
 import { configForAgent } from "./config"
 import { isHumanGatedAgent, isHumanGatedRequest } from "./gate"
 import { appendResult, log } from "./log"
+import { avoidAskerModel } from "./model"
 import { decideOutcome, type HandlerDeps, type Outcome } from "./orchestrator"
 import { buildResult, compactResult, type ResultRecord } from "./result"
 import type { QuestionInfo, QuestionRequest } from "./types"
@@ -107,7 +108,9 @@ export async function runSecondOpinion(
   } else if (isHumanGatedRequest(request)) {
     outcome = { kind: "gated", reason: "question carries the HUMAN_GATE: marker" }
   } else {
-    const scoped: HandlerDeps = { ...deps, config: configForAgent(deps.config, agent), projectDir: ctx.directory || deps.projectDir }
+    const askerModel = await deps.tracker.resolveModel(deps.input.client, ctx.sessionID)
+    const config = avoidAskerModel(configForAgent(deps.config, agent), askerModel, request.id)
+    const scoped: HandlerDeps = { ...deps, config, projectDir: ctx.directory || deps.projectDir }
     const timeoutMs = scoped.config.handlerTimeoutMs
     const result = await withTimeout(
       decideOutcome(scoped, request, { text: args.facts || null, label: FACTS_LABEL }),

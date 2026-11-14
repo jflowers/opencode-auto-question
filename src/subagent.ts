@@ -1,11 +1,14 @@
 import type { Plugin } from "@opencode-ai/plugin"
 import { log } from "./log"
+import { parseModelRef } from "./model"
 
 type PluginInput = Parameters<Plugin>[0]
 
 export interface SubagentOptions {
   parentSessionID: string
   agent: string
+  /** "provider/model" overriding the agent's own model. */
+  model?: string
   prompt: string
   timeoutMs: number
   title: string
@@ -42,6 +45,7 @@ export async function runSubagentDetailed(
 ): Promise<{ text: string; model?: string } | null> {
   const httpClient = (input.client as any)._client
   let sessionID: string | undefined
+  const model = opts.model ? parseModelRef(opts.model) : null
 
   try {
     const created = await httpClient.post({
@@ -59,6 +63,7 @@ export async function runSubagentDetailed(
         url: `/session/${sessionID}/message`,
         body: {
           agent: opts.agent,
+          ...(model ? { model } : {}),
           tools: { question: false },
           parts: [{ type: "text", text: opts.prompt }],
         },
@@ -78,11 +83,11 @@ export async function runSubagentDetailed(
       .trim()
     if (!text) return null
     const info = result?.data?.info
-    const model =
+    const replyModel =
       typeof info?.providerID === "string" && typeof info?.modelID === "string"
         ? `${info.providerID}/${info.modelID}`
         : undefined
-    return model ? { text, model } : { text }
+    return replyModel ? { text, model: replyModel } : { text }
   } catch (e) {
     log("warn", "subagent run failed", { error: String(e), title: opts.title })
     return null

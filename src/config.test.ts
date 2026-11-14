@@ -100,7 +100,7 @@ describe("loadConfig", () => {
   })
 
   test("defaults include agentDecision and guidance blocks", () => {
-    expect(DEFAULT_CONFIG.agentDecision).toEqual({ agent: "auto-question-decide", timeoutMs: 60_000 })
+    expect(DEFAULT_CONFIG.agentDecision).toEqual({ agent: "auto-question-decide", model: "", timeoutMs: 60_000 })
     expect(DEFAULT_CONFIG.guidance).toEqual({
       enabled: true,
       projectPath: ".opencode/auto-question/guidance",
@@ -281,6 +281,33 @@ describe("profiles", () => {
   test("profile names match agents case-insensitively", () => {
     const config = load({ ...base, profiles: { "HUD-Supervisor": { confidenceThreshold: 0.9 } } })
     expect(configForAgent(config, "hud-supervisor").confidenceThreshold).toBe(0.9)
+  })
+
+  test("a profile can set the llm model, alternates and subagent models", () => {
+    const config = load({
+      ...base,
+      profiles: {
+        "hud-supervisor": {
+          llm: { model: "z-ai/glm-5.3", alternateModels: ["qwen/qwen3"] },
+          contextGathering: { model: "openrouter/qwen/qwen3-coder" },
+          agentDecision: { model: "openrouter/deepseek/deepseek-v4" },
+        },
+      },
+    })
+    const hud = configForAgent(config, "hud-supervisor")
+    expect(hud.llm).toMatchObject({ model: "z-ai/glm-5.3", alternateModels: ["qwen/qwen3"] })
+    expect(hud.contextGathering).toEqual({ agent: "auto-question-ctx", model: "openrouter/qwen/qwen3-coder", timeoutMs: 30_000 })
+    expect(hud.agentDecision.model).toBe("openrouter/deepseek/deepseek-v4")
+    expect(configForAgent(config, "autonomy").contextGathering.model).toBe("")
+  })
+
+  test("subagent models must be provider/model, and alternates non-empty strings", () => {
+    expect(() => load({ ...base, contextGathering: { model: "qwen3" } })).toThrow(/contextGathering\.model must be "provider\/model"/)
+    expect(() => load({ ...base, profiles: { "hud-supervisor": { agentDecision: { model: "x/" } } } })).toThrow(
+      /profiles\.hud-supervisor: agentDecision\.model/,
+    )
+    expect(() => load({ ...base, llm: { alternateModels: "qwen" } })).toThrow(/llm\.alternateModels/)
+    expect(() => load({ ...base, llm: { alternateModels: [""] } })).toThrow(/llm\.alternateModels/)
   })
 
   test("two profiles for the same agent in different case are rejected", () => {
