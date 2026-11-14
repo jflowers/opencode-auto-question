@@ -83,6 +83,7 @@ export const PROFILE_KEYS = [
   "immediateContext",
   "sessionSummary",
   "handlerTimeoutMs",
+  "onDefer",
 ] as const
 
 export type ProfileKey = (typeof PROFILE_KEYS)[number]
@@ -131,6 +132,14 @@ export interface Config {
   sessionSummary: boolean
   /** Hard cap for the entire auto-answer attempt per question request. */
   handlerTimeoutMs: number
+  /**
+   * What to do with a question that is not auto-answered (low confidence,
+   * engine failure, timeout). "human" leaves it pending for the TUI form.
+   * "reject" answers it with a NO_SECOND_OPINION: marker so a headless run
+   * continues, and rejects HUMAN_GATE: questions (ending the run) instead of
+   * leaving them pending.
+   */
+  onDefer: "human" | "reject"
   verbose: boolean
   /**
    * Register the bundled agents (autonomy, auto-question-ctx,

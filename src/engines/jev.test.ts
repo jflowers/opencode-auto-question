@@ -25,6 +25,7 @@ const base: Config = {
     maxChars: 20000,
   },
   handlerTimeoutMs: 120000,
+  onDefer: "human",
   immediateContext: true,
   sessionSummary: true,
   verbose: false,

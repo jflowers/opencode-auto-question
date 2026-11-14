@@ -80,6 +80,7 @@ export const DEFAULT_CONFIG: Config = {
   immediateContext: true,
   sessionSummary: true,
   handlerTimeoutMs: 120_000,
+  onDefer: "human",
   verbose: false,
   registerAgents: true,
   profiles: {},
@@ -284,6 +285,9 @@ function normalizeBehavior(c: Config, prefix: string): void {
   c.fallbackThreshold = clamp01(c.fallbackThreshold, 0.35)
   if (typeof c.handlerTimeoutMs !== "number" || c.handlerTimeoutMs < 1000) {
     c.handlerTimeoutMs = DEFAULT_CONFIG.handlerTimeoutMs
+  }
+  if (c.onDefer !== "human" && c.onDefer !== "reject") {
+    throw new ConfigError(prefix + "onDefer must be one of: human, reject")
   }
   if (typeof c.immediateContext !== "boolean") c.immediateContext = true
   if (typeof c.sessionSummary !== "boolean") c.sessionSummary = true

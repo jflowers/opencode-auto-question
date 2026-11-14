@@ -369,4 +369,15 @@ describe("profiles", () => {
       )
     })
   })
+
+  test("onDefer defaults to human, can be set per profile, and rejects unknown values", () => {
+    expect(load({}).onDefer).toBe("human")
+    const config = load({ ...base, profiles: { "hud-supervisor": { onDefer: "reject" } } })
+    expect(config.onDefer).toBe("human")
+    expect(configForAgent(config, "hud-supervisor").onDefer).toBe("reject")
+    expect(() => load({ onDefer: "drop" })).toThrow(/onDefer must be one of: human, reject/)
+    expect(() => load({ ...base, profiles: { "hud-supervisor": { onDefer: "drop" } } })).toThrow(
+      /profiles\.hud-supervisor: onDefer must be one of/,
+    )
+  })
 })

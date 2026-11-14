@@ -225,6 +225,7 @@ Dewey's `dewey gate auto-answer` startup check refuses `/dewey-distill` independ
 | `guidance.globalPath` | `"~/.config/opencode/auto-question/guidance"` | Global guidance dir. A relative path is relative to the config file that sets it. `""` loads no global guidance |
 | `guidance.maxChars` | `20000` | Total guidance characters passed to the decision agent |
 | `handlerTimeoutMs` | `120000` | Hard cap per question request |
+| `onDefer` | `"human"` | A question that isn't auto-answered: `"human"` leaves it pending for the TUI form; `"reject"` answers it with a `NO_SECOND_OPINION:` marker so headless runs continue. See [Headless runs](#headless-runs-ondefer) |
 | `profiles` | `{}` | Per-agent overrides; see [Profiles](#profiles) |
 
 ### Config files
@@ -238,6 +239,14 @@ The plugin loads, in order, each file deep-merged over the one before (objects m
 `AUTO_QUESTION_CONFIG=<path>` instead names one file that is merged over the defaults alone: neither the global file nor the config-dir file is read. That file must exist, or the plugin stays inert and logs why.
 
 A relative `guidance.globalPath` resolves against the directory of the file that sets it, so a config dir can keep its guidance at `<dir>/auto-question/guidance` with `"globalPath": "auto-question/guidance"`. `guidance.projectPath` stays relative to the project. The log records which files were loaded.
+
+### Headless runs (`onDefer`)
+
+By default a question the plugin doesn't answer stays pending for the TUI form. That covers low confidence, project guidance that covered the question without a confident answer, an engine failure and a handler timeout. In a headless `opencode run` nobody can answer, so the run hangs.
+
+With `"onDefer": "reject"`, set at the top level or per profile:
+- **Deferred questions:** each question in the request gets one answer, a marker the asking agent can act on, for example `NO_SECOND_OPINION: deferred (confidence 0.31 < 0.35, pass 2)` or `NO_SECOND_OPINION: deferred — LLM API 503 (pass 1 (no gathered context))`. The run continues, at the latest after `handlerTimeoutMs`.
+- **`HUMAN_GATE:` questions:** these are rejected, never answered. opencode ends the agent's turn on a rejected question, so the run finishes instead of hanging, and the session summary records `HUMAN_GATE_UNANSWERED`. Questions from agents in `humanGatedAgents` aren't touched; those agents are never auto-answered.
 
 ### Profiles
 
@@ -256,7 +265,7 @@ Every agent in `agents` shares the top-level settings unless it has a profile. A
 }
 ```
 
-A profile can set `engine`, `jev`, `llm`, `confidenceThreshold`, `fallbackThreshold`, `contextGathering`, `agentDecision`, `guidance`, `immediateContext`, `sessionSummary` and `handlerTimeoutMs`. Any other key is ignored with a logged error. Human gates are checked before a profile applies, and `agents`, `humanGatedAgents` and `enabled` can't be set per profile, so a profile can't weaken a gate.
+A profile can set `engine`, `jev`, `llm`, `confidenceThreshold`, `fallbackThreshold`, `contextGathering`, `agentDecision`, `guidance`, `immediateContext`, `sessionSummary`, `handlerTimeoutMs` and `onDefer`. Any other key is ignored with a logged error. Human gates are checked before a profile applies, and `agents`, `humanGatedAgents` and `enabled` can't be set per profile, so a profile can't weaken a gate.
 
 Guidance in a profile:
 - With its own `globalPath`, the profile loads the top-level global guidance first, then its own, then the project's.

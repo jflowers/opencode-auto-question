@@ -7,6 +7,12 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- `onDefer: "human" | "reject"` (#7), top level or per profile. With
+  `"reject"`, a question the plugin doesn't answer (low confidence, guidance
+  covered without confidence, engine failure, timeout) is answered with a
+  `NO_SECOND_OPINION: deferred (...)` marker so a headless run continues, and
+  a `HUMAN_GATE:` question is rejected, which ends the run, instead of being
+  left pending. The default `"human"` keeps today's behavior.
 - Per-agent `profiles` (#8): overrides for one agent's questions (engine,
   models, thresholds, guidance, context, summary, timeout), deep-merged over
   the top-level settings. `guidance.inheritGlobal: false` in a profile drops
