@@ -9,6 +9,11 @@ confidence gate with subagent context gathering, human fallback.
   API (opencode 1.19.x); `setup` is the v2 entry (`src/v2.ts`), a stub until
   v2 supports answering forms. opencode 1.19 calls both, so the stub warns
   only if no 1.x `server` call shows up within a grace period.
+- `second_opinion` tool (`src/second-opinion.ts`), registered through the
+  `tool` hook when `secondOpinion.enabled`. Its args are plain JSON Schema,
+  not Zod: opencode 1.19 passes non-Zod plugin args through as-is (all
+  required, unvalidated), which keeps runtime SDK imports type-only;
+  `parseSecondOpinionArgs` validates.
 - Config: `~/.config/opencode/auto-question.jsonc`, then
   `$OPENCODE_CONFIG_DIR/auto-question.jsonc`; or `AUTO_QUESTION_CONFIG` alone
   (`configSources()` in `src/config.ts`). All optional (template in

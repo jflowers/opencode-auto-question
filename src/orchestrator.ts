@@ -344,13 +344,32 @@ export type Outcome =
  * outcome without replying or writing a summary, so a result that arrives
  * after the handler timeout changes nothing.
  */
-export async function decideOutcome(deps: HandlerDeps, request: QuestionRequest): Promise<Outcome> {
+/**
+ * Context supplied by the caller instead of the asking message, e.g. the
+ * `facts` argument of the second_opinion tool. `label` heads it in prompts.
+ */
+export interface ProvidedContext {
+  text: string | null
+  label: string
+}
+
+/** Heading for the asking message's text when it is used as context. */
+const REASONING_LABEL = "Agent's reasoning before asking:"
+
+export async function decideOutcome(
+  deps: HandlerDeps,
+  request: QuestionRequest,
+  provided?: ProvidedContext,
+): Promise<Outcome> {
   const { config } = deps
+  const label = provided?.label ?? REASONING_LABEL
 
   // Fetch the model's reasoning text from the same assistant message that
   // called the question tool — tables, recommendations, detailed options, etc.
-  let immediateCtx: string | null = null
-  if (config.immediateContext) {
+  // Context the caller provided replaces it entirely: the asking message is
+  // never read.
+  let immediateCtx: string | null = provided ? provided.text : null
+  if (!provided && config.immediateContext) {
     const httpClient = (deps.input.client as any)._client
     immediateCtx = await getImmediateContext(httpClient, request)
     if (immediateCtx) {
@@ -365,7 +384,7 @@ export async function decideOutcome(deps: HandlerDeps, request: QuestionRequest)
   // flow when the agent fails or the guidance does not cover the question.
   const guidance = loadGuidance(deps.projectDir, config)
   if (guidance) {
-    const agentDecision = await decideWithAgent(deps.input, config, request, immediateCtx, guidance)
+    const agentDecision = await decideWithAgent(deps.input, config, request, immediateCtx, guidance, label)
     logDecision("pass 0 (guidance agent)", request.id, agentDecision)
 
     if (agentDecision.ok && minConfidence(agentDecision) >= config.confidenceThreshold) {
@@ -395,7 +414,7 @@ export async function decideOutcome(deps: HandlerDeps, request: QuestionRequest)
 
   // Pass 1: decide with immediate context (model reasoning) only.
   const pass1Context = immediateCtx
-    ? `Agent's reasoning before asking:\n${immediateCtx}`
+    ? `${label}\n${immediateCtx}`
     : null
   let decision = await decide(config, request.questions, pass1Context)
   logDecision("pass 1", request.id, decision)
@@ -414,11 +433,11 @@ export async function decideOutcome(deps: HandlerDeps, request: QuestionRequest)
     minConfidence: decision.ok ? minConfidence(decision) : null,
     threshold: config.confidenceThreshold,
   })
-  const gathered = await gatherContext(deps.input, config, request)
+  const gathered = await gatherContext(deps.input, config, request, provided?.text ?? null)
   let pass = "pass 1 (no gathered context)"
   if (gathered || immediateCtx) {
     const parts: string[] = []
-    if (immediateCtx) parts.push(`Agent's reasoning before asking:\n${immediateCtx}`)
+    if (immediateCtx) parts.push(`${label}\n${immediateCtx}`)
     if (gathered) parts.push(`Additional context from knowledge sources:\n${gathered}`)
     const combinedContext = parts.join("\n\n")
 

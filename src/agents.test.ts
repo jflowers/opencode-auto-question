@@ -83,6 +83,7 @@ describe("registerAgents", () => {
         question: "allow",
         plan_enter: "allow",
         external_directory: overlay.permission.external_directory,
+        second_opinion: "deny",
       },
     })
   })

@@ -388,5 +388,18 @@ describe("profiles", () => {
     expect(configForAgent(config, "autonomy").resultTrailer).toBe(false)
     expect(() => load({ resultTrailer: "yes" })).toThrow(/resultTrailer must be a boolean/)
   })
+
+  test("secondOpinion is off by default and must have a boolean enabled", () => {
+    expect(load({}).secondOpinion).toEqual({ enabled: false })
+    expect(load({ secondOpinion: { enabled: true } }).secondOpinion.enabled).toBe(true)
+    expect(() => load({ secondOpinion: { enabled: "yes" } })).toThrow(/secondOpinion.enabled must be a boolean/)
+    expect(() => load({ secondOpinion: true })).toThrow(/secondOpinion.enabled must be a boolean/)
+  })
+
+  test("secondOpinion is not a profile key", () => {
+    const warnings: string[] = []
+    load({ ...base, profiles: { "hud-supervisor": { secondOpinion: { enabled: true } } } }, warnings)
+    expect(warnings.some((w) => w.includes("profiles.hud-supervisor.secondOpinion is not a profile setting"))).toBe(true)
+  })
 })
 

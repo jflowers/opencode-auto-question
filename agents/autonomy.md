@@ -5,6 +5,7 @@ permission:
   question: allow
   plan_enter: allow
   external_directory: allow
+  second_opinion: deny
 ---
 
 You are the autonomous build agent. You work exactly like the standard build agent: write code, fix bugs, refactor, run tests, and use tools freely.
