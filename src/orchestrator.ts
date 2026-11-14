@@ -8,7 +8,8 @@ import { loadGuidance } from "./guidance"
 import { decideWithAgent } from "./engines/agent"
 import { decideWithJev, resolveJevCarrier } from "./engines/jev"
 import { decideWithLlm } from "./engines/llm"
-import { log } from "./log"
+import { appendResult, log } from "./log"
+import { buildResult, formatTrailer, withTrailer, type ResultRecord } from "./result"
 
 type PluginInput = Parameters<Plugin>[0]
 
@@ -19,6 +20,8 @@ export interface HandlerDeps {
   settled: Set<string>
   /** Project root (opencode launch directory) for loading .opencode guidance. */
   projectDir: string
+  /** Where result records go; defaults to results.jsonl. Tests capture them here. */
+  recordResult?: (record: ResultRecord) => void
 }
 
 /** Upper bound on remembered request IDs; the oldest half is dropped past it. */
@@ -220,10 +223,17 @@ function questionUrl(request: QuestionRequest, version: "v1" | "v2", action: "re
     : `/api/session/${request.sessionID}/question/${request.id}/${action}`
 }
 
-async function reply(deps: HandlerDeps, request: QuestionRequest, decision: Decision, version: "v1" | "v2", pass: string): Promise<void> {
+async function reply(
+  deps: HandlerDeps,
+  request: QuestionRequest,
+  decision: Decision,
+  version: "v1" | "v2",
+  pass: string,
+  answers: string[][] = decision.answers,
+): Promise<void> {
   const httpClient = (deps.input.client as any)._client
   try {
-    await httpClient.post({ url: questionUrl(request, version, "reply"), body: { answers: decision.answers } })
+    await httpClient.post({ url: questionUrl(request, version, "reply"), body: { answers } })
     log("info", "auto-answered", {
       requestID: request.id,
       sessionID: request.sessionID,
@@ -243,12 +253,19 @@ async function reply(deps: HandlerDeps, request: QuestionRequest, decision: Deci
  * marker, so the asking agent gets a tool result it can act on and the run
  * continues. (A real reject would end the agent's turn.)
  */
-async function replyMarker(deps: HandlerDeps, request: QuestionRequest, version: "v1" | "v2", marker: string): Promise<void> {
+async function replyMarker(
+  deps: HandlerDeps,
+  request: QuestionRequest,
+  version: "v1" | "v2",
+  marker: string,
+  trailer: string | null,
+): Promise<void> {
   const httpClient = (deps.input.client as any)._client
+  const answers = request.questions.map(() => [marker])
   try {
     await httpClient.post({
       url: questionUrl(request, version, "reply"),
-      body: { answers: request.questions.map(() => [marker]) },
+      body: { answers: trailer ? withTrailer(answers, trailer) : answers },
     })
     log("info", "declined with marker (onDefer: reject)", { requestID: request.id, sessionID: request.sessionID, marker })
   } catch (e) {
@@ -488,20 +505,27 @@ export function summaryText(request: QuestionRequest, outcome: Outcome, onDefer:
  * Act on an outcome. Answered: reply. Otherwise, with onDefer "human" the
  * question stays pending for the human; with "reject", a deferred or
  * timed-out question is answered with a NO_SECOND_OPINION: marker and a
- * human gate is rejected (never answered). Then write the session summary.
+ * human gate is rejected (never answered). Every outcome is recorded in
+ * results.jsonl; with resultTrailer, a reply also carries the record. Then
+ * write the session summary.
  */
 async function settle(
   deps: HandlerDeps,
   request: QuestionRequest,
   version: "v1" | "v2",
   outcome: Outcome,
+  agent: string | undefined,
 ): Promise<void> {
-  const { onDefer } = deps.config
+  const { onDefer, resultTrailer } = deps.config
+  const record = buildResult(request, outcome, agent, onDefer)
+  const trailer = resultTrailer ? formatTrailer(record) : null
+  ;(deps.recordResult ?? appendResult)(record)
   if (outcome.kind === "answered") {
-    await reply(deps, request, outcome.decision, version, outcome.pass)
+    const answers = trailer ? withTrailer(outcome.decision.answers, trailer) : outcome.decision.answers
+    await reply(deps, request, outcome.decision, version, outcome.pass, answers)
   } else if (onDefer === "reject") {
     if (outcome.kind === "gated") await reject(deps, request, version, outcome.reason)
-    else await replyMarker(deps, request, version, deferMarker(outcome))
+    else await replyMarker(deps, request, version, deferMarker(outcome), trailer)
   }
   if (deps.config.sessionSummary) {
     await injectSummary(deps, request.sessionID, summaryText(request, outcome, onDefer))
@@ -566,7 +590,7 @@ export async function handleQuestionAsked(
     if (settled.has(request.id)) return
     markSettled(settled, request.id)
     log("info", "human gate — leaving for human", { requestID: request.id, reason: gate })
-    await settle(scoped, request, version, { kind: "gated", reason: gate })
+    await settle(scoped, request, version, { kind: "gated", reason: gate }, agent)
     return
   }
 
@@ -578,5 +602,5 @@ export async function handleQuestionAsked(
     log("warn", "handler timed out — leaving for human", { requestID: request.id })
     outcome = { kind: "timeout", timeoutMs }
   }
-  await settle(scoped, request, version, outcome)
+  await settle(scoped, request, version, outcome, agent)
 }

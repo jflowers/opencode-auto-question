@@ -1,6 +1,6 @@
 import type { Config, Decision, QuestionRequest } from "../types"
 import { buildAgentPrompt, parseAgentResponse } from "../mapping"
-import { runSubagent } from "../subagent"
+import { runSubagentDetailed } from "../subagent"
 import type { Plugin } from "@opencode-ai/plugin"
 
 type PluginInput = Parameters<Plugin>[0]
@@ -20,7 +20,7 @@ export async function decideWithAgent(
   guidance: string,
 ): Promise<Decision> {
   const prompt = buildAgentPrompt(request.questions, guidance, immediateCtx)
-  const text = await runSubagent(input, {
+  const reply = await runSubagentDetailed(input, {
     parentSessionID: request.sessionID,
     agent: config.agentDecision.agent,
     prompt,
@@ -28,6 +28,7 @@ export async function decideWithAgent(
     title: "auto-question: decision",
   })
 
+  const text = reply?.text
   if (!text) {
     return {
       ok: false,
@@ -55,5 +56,7 @@ export async function decideWithAgent(
     confidences: parsed.confidences,
     engine: "agent",
     guidanceCovered: parsed.covered,
+    model: reply.model ?? `agent:${config.agentDecision.agent}`,
+    ...(parsed.rationale ? { rationale: parsed.rationale } : {}),
   }
 }

@@ -84,6 +84,7 @@ export const PROFILE_KEYS = [
   "sessionSummary",
   "handlerTimeoutMs",
   "onDefer",
+  "resultTrailer",
 ] as const
 
 export type ProfileKey = (typeof PROFILE_KEYS)[number]
@@ -140,6 +141,12 @@ export interface Config {
    * leaving them pending.
    */
   onDefer: "human" | "reject"
+  /**
+   * Append `AUTO_QUESTION_RESULT {json}` (answer, confidence, pass, engine,
+   * model, rationale) to the answer the asking agent receives. The record
+   * is written to results.jsonl either way.
+   */
+  resultTrailer: boolean
   verbose: boolean
   /**
    * Register the bundled agents (autonomy, auto-question-ctx,
@@ -159,6 +166,10 @@ export interface Decision {
   /** One confidence in [0,1] per question. */
   confidences: number[]
   engine: EngineName
+  /** The model that decided, when known (e.g. "typesafe/jev-1.14"). */
+  model?: string
+  /** One-line reason the engine gave for its answers, when it gave one. */
+  rationale?: string
   /** Agent engine only: true when project guidance addressed the questions. */
   guidanceCovered?: boolean
   error?: string

@@ -361,4 +361,110 @@ describe("handleQuestionAsked decision flow", () => {
       expect(h.replies()).toEqual([])
     })
   })
+
+  describe("structured result", () => {
+    const parseTrailer = (answer: string) => {
+      expect(answer.startsWith("AUTO_QUESTION_RESULT ")).toBe(true)
+      return JSON.parse(answer.slice("AUTO_QUESTION_RESULT ".length))
+    }
+
+    test("an answered question is recorded with engine, model and rationale; no trailer by default", async () => {
+      h = createHarness({ agent: "autonomy", engine: [{ ...decide(0.82), rationale: "The tool is single-user." }] })
+      await handleQuestionAsked(h.deps, q(), "v1")
+      expect(h.replies()[0]!.body.answers).toEqual([["sqlite"]])
+      expect(h.results).toHaveLength(1)
+      expect(h.results[0]).toMatchObject({
+        requestID: "que_1",
+        sessionID: "ses_1",
+        agent: "autonomy",
+        outcome: "answered",
+        action: "replied",
+        answer: "sqlite",
+        confidence: 0.82,
+        pass: 1,
+        engine: "llm",
+        model: DEFAULT_CONFIG.llm.model,
+        rationale: "The tool is single-user.",
+      })
+    })
+
+    test("resultTrailer appends the record to the answer", async () => {
+      h = createHarness({
+        agent: "autonomy",
+        engine: [decide(0.3), { ...decide(0.5), rationale: "Context says sqlite." }],
+        subagents: { context: "The team chose sqlite." },
+        config: { resultTrailer: true },
+      })
+      await handleQuestionAsked(h.deps, q(), "v1")
+      const [answer] = h.replies()[0]!.body.answers as string[][]
+      expect(answer![0]).toBe("sqlite")
+      expect(parseTrailer(answer![1]!)).toEqual({
+        outcome: "answered",
+        answer: "sqlite",
+        confidence: 0.5,
+        pass: 2,
+        engine: "llm",
+        model: DEFAULT_CONFIG.llm.model,
+        rationale: "Context says sqlite.",
+      })
+    })
+
+    test("a question left for the human is recorded with answer null and the reason", async () => {
+      h = createHarness({ agent: "autonomy", engine: [decide(0.3), decide(0.2)], subagents: { context: "Facts." } })
+      await handleQuestionAsked(h.deps, q(), "v1")
+      expect(h.replies()).toHaveLength(0)
+      expect(h.results[0]).toMatchObject({
+        outcome: "deferred",
+        action: "left_for_human",
+        answer: null,
+        confidence: 0.2,
+        threshold: 0.35,
+        pass: 2,
+        reason: "low confidence",
+      })
+    })
+
+    test("under onDefer reject the marker reply carries the trailer", async () => {
+      h = createHarness({
+        agent: "autonomy",
+        engine: [decide(0.3), decide(0.31)],
+        subagents: { context: "Facts." },
+        config: { onDefer: "reject", resultTrailer: true },
+      })
+      await handleQuestionAsked(h.deps, q(), "v1")
+      const [answer] = h.replies()[0]!.body.answers as string[][]
+      expect(answer![0]).toStartWith("NO_SECOND_OPINION: deferred")
+      expect(parseTrailer(answer![1]!)).toMatchObject({ outcome: "deferred", answer: null, confidence: 0.31, pass: 2, reason: "low confidence" })
+      expect(h.results[0]!.action).toBe("marker")
+    })
+
+    test("a rejected human gate is recorded (no reply can carry a trailer)", async () => {
+      h = createHarness({ agent: "autonomy", engine: [decide(0.99)], config: { onDefer: "reject", resultTrailer: true } })
+      await handleQuestionAsked(h.deps, request([question("HUMAN_GATE: Promote?")]), "v1")
+      expect(h.replies()).toHaveLength(0)
+      expect(h.results[0]).toMatchObject({ outcome: "gated", action: "rejected", answer: null, reason: "question carries the HUMAN_GATE: marker" })
+    })
+
+    test("a timeout is recorded once, and a late decision adds nothing", async () => {
+      h = createHarness({ agent: "autonomy", engine: [{ delayMs: 60, reply: decide(0.99) }], config: { handlerTimeoutMs: 20 } })
+      await handleQuestionAsked(h.deps, q(), "v1")
+      await new Promise((resolve) => setTimeout(resolve, 120))
+      expect(h.results).toHaveLength(1)
+      expect(h.results[0]).toMatchObject({ outcome: "timeout", action: "left_for_human" })
+    })
+
+    test("the guidance agent's answer names it as the model when the server reports none", async () => {
+      const decision = JSON.stringify({ answers: [["sqlite"]], confidences: [0.9], covered: true, rationale: "Guidance says sqlite." })
+      h = createHarness({ agent: "autonomy", engine: [decide(0.1)], guidance: "Prefer sqlite.", subagents: { decision } })
+      await handleQuestionAsked(h.deps, q(), "v1")
+      expect(h.results[0]).toMatchObject({ pass: 0, engine: "agent", model: "agent:auto-question-decide", rationale: "Guidance says sqlite." })
+    })
+
+    test("a non-autonomous session records nothing", async () => {
+      h = createHarness({ agent: "build", engine: [decide(0.99)] })
+      await handleQuestionAsked(h.deps, q(), "v1")
+      expect(h.results).toEqual([])
+    })
+  })
 })
+

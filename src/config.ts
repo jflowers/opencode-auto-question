@@ -81,6 +81,7 @@ export const DEFAULT_CONFIG: Config = {
   sessionSummary: true,
   handlerTimeoutMs: 120_000,
   onDefer: "human",
+  resultTrailer: false,
   verbose: false,
   registerAgents: true,
   profiles: {},
@@ -289,6 +290,7 @@ function normalizeBehavior(c: Config, prefix: string): void {
   if (c.onDefer !== "human" && c.onDefer !== "reject") {
     throw new ConfigError(prefix + "onDefer must be one of: human, reject")
   }
+  if (typeof c.resultTrailer !== "boolean") throw new ConfigError(prefix + "resultTrailer must be a boolean")
   if (typeof c.immediateContext !== "boolean") c.immediateContext = true
   if (typeof c.sessionSummary !== "boolean") c.sessionSummary = true
 
