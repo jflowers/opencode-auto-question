@@ -230,7 +230,7 @@ Dewey's `dewey gate auto-answer` startup check refuses `/dewey-distill` independ
 | `guidance.maxChars` | `20000` | Total guidance characters passed to the decision agent |
 | `handlerTimeoutMs` | `120000` | Hard cap per question request |
 | `resultTrailer` | `false` | Append `AUTO_QUESTION_RESULT {json}` to the answer the asking agent receives. See [Results](#results) |
-| `onDefer` | `"human"` | A question that isn't auto-answered: `"human"` leaves it pending for the TUI form; `"reject"` answers it with a `NO_SECOND_OPINION:` marker so headless runs continue. See [Headless runs](#headless-runs-ondefer) |
+| `onDefer` | `"human"` | A question that isn't auto-answered: `"human"` leaves it pending for the TUI form; `"reject"` answers it with a `NO_SECOND_OPINION:` marker so unattended sessions continue. See [Unattended sessions](#unattended-sessions-ondefer) |
 | `secondOpinion.enabled` | `false` | Register the `second_opinion` tool. See [Second opinion tool](#second-opinion-tool) |
 | `profiles` | `{}` | Per-agent overrides; see [Profiles](#profiles) |
 
@@ -246,9 +246,11 @@ The plugin loads, in order, each file deep-merged over the one before (objects m
 
 A relative `guidance.globalPath` resolves against the directory of the file that sets it, so a config dir can keep its guidance at `<dir>/auto-question/guidance` with `"globalPath": "auto-question/guidance"`. `guidance.projectPath` stays relative to the project. The log records which files were loaded.
 
-### Headless runs (`onDefer`)
+### Unattended sessions (`onDefer`)
 
-By default a question the plugin doesn't answer stays pending for the TUI form. That covers low confidence, project guidance that covered the question without a confident answer, an engine failure and a handler timeout. In a headless `opencode run` nobody can answer, so the run hangs.
+By default a question the plugin doesn't answer stays pending for the TUI form. That covers low confidence, project guidance that covered the question without a confident answer, an engine failure and a handler timeout. In an unattended session, such as a TUI nobody is watching or a session driven through `opencode serve` or the SDK, nobody answers, so the run hangs.
+
+`opencode run` is different: unless it runs with `--mini`, it denies the `question` tool for its session (opencode 1.18), so its agents never ask and this setting has no effect there.
 
 With `"onDefer": "reject"`, set at the top level or per profile:
 - **Deferred questions:** each question in the request gets one answer, a marker the asking agent can act on, for example `NO_SECOND_OPINION: deferred (confidence 0.31 < 0.35, pass 2)` or `NO_SECOND_OPINION: deferred — LLM API 503 (pass 1 (no gathered context))`. The run continues, at the latest after `handlerTimeoutMs`.
