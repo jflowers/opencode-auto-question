@@ -207,7 +207,7 @@
         "reject"
       ],
       "default": "human",
-      "description": "What happens to a question that is not auto-answered (low confidence, engine failure, timeout). human: it stays pending for the TUI form. reject: it is answered with a NO_SECOND_OPINION: marker so a headless run continues, and a HUMAN_GATE: question is rejected (ending the run) rather than left pending."
+      "description": "What happens to a question that is not auto-answered (low confidence, engine failure, timeout). human: it stays pending for the TUI form. reject: it is answered with a NO_SECOND_OPINION: marker so an unattended session continues, and a HUMAN_GATE: question is rejected (ending the run) rather than left pending."
     },
     "resultTrailer": {
       "type": "boolean",
@@ -393,7 +393,7 @@
               "human",
               "reject"
             ],
-            "description": "What happens to a question that is not auto-answered (low confidence, engine failure, timeout). human: it stays pending for the TUI form. reject: it is answered with a NO_SECOND_OPINION: marker so a headless run continues, and a HUMAN_GATE: question is rejected (ending the run) rather than left pending."
+            "description": "What happens to a question that is not auto-answered (low confidence, engine failure, timeout). human: it stays pending for the TUI form. reject: it is answered with a NO_SECOND_OPINION: marker so an unattended session continues, and a HUMAN_GATE: question is rejected (ending the run) rather than left pending."
           },
           "resultTrailer": {
             "type": "boolean",

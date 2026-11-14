@@ -103,8 +103,8 @@
 
   // A question the plugin does not answer (low confidence, engine failure,
   // timeout): "human" leaves it pending for the TUI form. "reject" answers it
-  // with "NO_SECOND_OPINION: deferred (...)" so a headless `opencode run`
-  // continues instead of hanging, and rejects HUMAN_GATE: questions (which
+  // with "NO_SECOND_OPINION: deferred (...)" so an unattended session (a TUI
+  // nobody watches, `opencode serve`) continues instead of hanging, and rejects HUMAN_GATE: questions (which
   // ends the run) instead of leaving them pending; a gate is never answered.
   "onDefer": "human",
 

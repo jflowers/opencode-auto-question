@@ -6,11 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-14
+
 ### Added
 - `onDefer: "human" | "reject"` (#7), top level or per profile. With
   `"reject"`, a question the plugin doesn't answer (low confidence, guidance
   covered without confidence, engine failure, timeout) is answered with a
-  `NO_SECOND_OPINION: deferred (...)` marker so a headless run continues, and
+  `NO_SECOND_OPINION: deferred (...)` marker so an unattended session (a TUI
+  nobody watches, `opencode serve`) continues, and
   a `HUMAN_GATE:` question is rejected, which ends the run, instead of being
   left pending. The default `"human"` keeps today's behavior.
 - Structured results (#10): every question from an auto-answered agent is
@@ -118,7 +121,8 @@ First release on npm, as `opencode-auto-question`.
   every question for a human: v2 replaced question events with forms, and its
   plugin API does not expose answering a form.
 
-[Unreleased]: https://github.com/jflowers/opencode-auto-question/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/jflowers/opencode-auto-question/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/jflowers/opencode-auto-question/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/jflowers/opencode-auto-question/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/jflowers/opencode-auto-question/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/jflowers/opencode-auto-question/compare/47de2ca...v0.1.1
