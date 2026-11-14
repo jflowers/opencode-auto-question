@@ -5,17 +5,19 @@ import { log } from "./log"
 
 type PluginInput = Parameters<Plugin>[0]
 
-function buildContextPrompt(request: QuestionRequest): string {
+function buildContextPrompt(request: QuestionRequest, facts: string | null): string {
   const questions = request.questions
     .map((q, i) => {
       const opts = q.options.map((o) => `   - "${o.label}": ${o.description ?? ""}`).join("\n")
       return `${i + 1}. ${q.question}\n${opts}`
     })
     .join("\n\n")
+  const factLines = facts ? ["", "Case facts supplied with the questions (verify them where you can; gather your own evidence):", facts] : []
   return [
     "An autonomous coding agent is about to answer these clarifying questions on behalf of the user:",
     "",
     questions,
+    ...factLines,
     "",
     "Search available knowledge sources (session history search, knowledge graphs, and any other searchable tools available to you) for context that would help the user answer: prior decisions, user preferences, precedents, related past work, project constraints.",
     "",
@@ -32,11 +34,12 @@ export async function gatherContext(
   input: PluginInput,
   config: Config,
   request: QuestionRequest,
+  facts: string | null = null,
 ): Promise<string | null> {
   const text = await runSubagent(input, {
     parentSessionID: request.sessionID,
     agent: config.contextGathering.agent,
-    prompt: buildContextPrompt(request),
+    prompt: buildContextPrompt(request, facts),
     timeoutMs: config.contextGathering.timeoutMs,
     title: "auto-question: context gathering",
   })

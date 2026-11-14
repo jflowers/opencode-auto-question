@@ -18,8 +18,9 @@ export async function decideWithAgent(
   request: QuestionRequest,
   immediateCtx: string | null,
   guidance: string,
+  contextLabel?: string,
 ): Promise<Decision> {
-  const prompt = buildAgentPrompt(request.questions, guidance, immediateCtx)
+  const prompt = buildAgentPrompt(request.questions, guidance, immediateCtx, contextLabel)
   const reply = await runSubagentDetailed(input, {
     parentSessionID: request.sessionID,
     agent: config.agentDecision.agent,

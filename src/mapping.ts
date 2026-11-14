@@ -175,13 +175,14 @@ export function buildAgentPrompt(
   questions: QuestionInfo[],
   guidance: string,
   context: string | null,
+  contextLabel = "The coding agent's reasoning before asking:",
 ): string {
   const lines: string[] = []
   lines.push("Project guidance for answering these questions (follow it exactly; it overrides your general judgment):")
   lines.push(guidance)
   lines.push("")
   if (context) {
-    lines.push("The coding agent's reasoning before asking:")
+    lines.push(contextLabel)
     lines.push(context)
     lines.push("")
   }

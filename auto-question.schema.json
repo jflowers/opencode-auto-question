@@ -204,6 +204,18 @@
       "default": true,
       "description": "Register the bundled autonomy, auto-question-ctx and auto-question-decide agents. Settings you give an agent of the same name win; the bundled definition fills in the rest."
     },
+    "secondOpinion": {
+      "type": "object",
+      "description": "The second_opinion tool: an agent asks for an independent decision on a question, options and case facts, and gets the result back as JSON. Plugin-wide, not a profile key; the calling agent's profile applies to the decision.",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Register the tool. It is then denied globally unless your opencode config sets a global second_opinion rule; allow it per agent with permission: { second_opinion: allow }."
+        }
+      }
+    },
     "profiles": {
       "type": "object",
       "default": {},

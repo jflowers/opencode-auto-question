@@ -25,6 +25,7 @@ describe("buildResult", () => {
       requestID: "que_1",
       sessionID: "ses_1",
       agent: "hud-supervisor",
+      source: "question",
       outcome: "answered",
       action: "replied",
       answer: "sqlite",

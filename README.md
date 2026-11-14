@@ -115,6 +115,7 @@ Switch a session to the `autonomy` agent, then trigger any question — the deci
 >   question: allow
 >   plan_enter: allow
 >   external_directory: allow
+>   second_opinion: deny
 > ```
 >
 > If you use a different autonomous agent, add the same overrides to its frontmatter.
@@ -227,6 +228,7 @@ Dewey's `dewey gate auto-answer` startup check refuses `/dewey-distill` independ
 | `handlerTimeoutMs` | `120000` | Hard cap per question request |
 | `resultTrailer` | `false` | Append `AUTO_QUESTION_RESULT {json}` to the answer the asking agent receives. See [Results](#results) |
 | `onDefer` | `"human"` | A question that isn't auto-answered: `"human"` leaves it pending for the TUI form; `"reject"` answers it with a `NO_SECOND_OPINION:` marker so headless runs continue. See [Headless runs](#headless-runs-ondefer) |
+| `secondOpinion.enabled` | `false` | Register the `second_opinion` tool. See [Second opinion tool](#second-opinion-tool) |
 | `profiles` | `{}` | Per-agent overrides; see [Profiles](#profiles) |
 
 ### Config files
@@ -272,6 +274,34 @@ With `"resultTrailer": true` (top level or per profile), any reply the asking ag
 ```
 
 A `NO_SECOND_OPINION:` marker reply carries it too. A rejected human gate, or a question left for the human, gets no reply to carry it, so its record is only in `results.jsonl`.
+
+### Second opinion tool
+
+An agent that wants an independent check on a decision (for example a reviewer about to submit a proposal) can call `second_opinion` instead of `question`. Enable it with `"secondOpinion": { "enabled": true }`.
+
+The tool takes three arguments:
+- `question`: the decision to make.
+- `options`: two or more `{label, description}` entries.
+- `facts`: the case facts only, without the caller's reasoning or recommendation.
+
+It runs the same pipeline as a question (guidance agent, pass 1, pass 2 with context gathering) under the **calling agent's profile**, so the profile picks the guidance, thresholds, engine and model. The engines and the context subagent see only the question, the options and the facts; the caller's message is never read. The tool never waits for a human: when no answer is confident enough, it returns `answer: null` with the reason. It returns the compact [result](#results) as JSON:
+
+```json
+{"outcome":"answered","answer":"Agree","confidence":0.82,"pass":2,"engine":"llm","model":"qwen/qwen3-235b-a22b","rationale":"…"}
+```
+
+`HUMAN_GATE:` questions and calls from agents in `humanGatedAgents` are never answered. Each call is written to `results.jsonl` with `"source": "second_opinion"`.
+
+**Who can call it:** when the tool is enabled, the plugin adds a global `"second_opinion": "deny"` to the opencode config unless you set a global rule for it yourself. Allow it per agent:
+
+```yaml
+# agents/hud-supervisor.md
+permission:
+  question: allow
+  second_opinion: allow
+```
+
+The bundled `autonomy` agent denies it.
 
 ### Profiles
 

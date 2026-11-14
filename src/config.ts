@@ -84,6 +84,7 @@ export const DEFAULT_CONFIG: Config = {
   resultTrailer: false,
   verbose: false,
   registerAgents: true,
+  secondOpinion: { enabled: false },
   profiles: {},
 }
 
@@ -267,6 +268,9 @@ export function loadConfig(
   }
   if (typeof config.verbose !== "boolean") config.verbose = false
   if (typeof config.registerAgents !== "boolean") throw new ConfigError("registerAgents must be a boolean")
+  if (!isPlainObject(config.secondOpinion) || typeof config.secondOpinion.enabled !== "boolean") {
+    throw new ConfigError("secondOpinion.enabled must be a boolean")
+  }
   normalizeBehavior(config, "")
 
   config.profiles = normalizeProfiles(config, warn)

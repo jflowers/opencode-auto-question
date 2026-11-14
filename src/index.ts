@@ -5,6 +5,7 @@ import { configSources, loadConfig } from "./config"
 import { AgentTracker } from "./detect"
 import { handleQuestionAsked, markSettled, type HandlerDeps } from "./orchestrator"
 import { resolveJevCarrier } from "./engines/jev"
+import { defaultDenySecondOpinion, SECOND_OPINION_TOOL, secondOpinionTool } from "./second-opinion"
 import { log, setVerbose } from "./log"
 import type { QuestionRequest } from "./types"
 import { markServerLoaded, setup } from "./v2"
@@ -112,8 +113,20 @@ const plugin: Plugin = async (input) => {
     }
   }
 
+  const secondOpinion = config.secondOpinion.enabled
   return {
     config: async (opencodeConfig) => {
+      if (secondOpinion) {
+        const did = defaultDenySecondOpinion(opencodeConfig as { permission?: unknown })
+        log("info", "second_opinion tool registered", {
+          globalPermission:
+            did === "added"
+              ? "deny (added; allow it per agent)"
+              : did === "kept"
+                ? "kept the configured rule"
+                : "blanket permission string; left as is",
+        })
+      }
       if (!bundledAgents) return
       try {
         const { added, filledIn } = registerAgents(opencodeConfig as { agent?: Record<string, unknown> }, bundledAgents)
@@ -122,6 +135,7 @@ const plugin: Plugin = async (input) => {
         log("error", "agent registration failed", { error: String(e) })
       }
     },
+    ...(secondOpinion ? { tool: { [SECOND_OPINION_TOOL]: secondOpinionTool(deps) } } : {}),
     event: async ({ event }) => {
       try {
         onEvent(deps, inflight, event)

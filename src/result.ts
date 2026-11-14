@@ -12,12 +12,15 @@ export interface ResultRecord {
   requestID: string
   sessionID: string
   agent: string | null
+  /** What asked: an intercepted `question` call or a `second_opinion` tool call. */
+  source: "question" | "second_opinion"
   outcome: "answered" | "deferred" | "gated" | "timeout"
   /**
    * What the plugin did: replied with the decision, replied with a
-   * NO_SECOND_OPINION marker, rejected a human gate, or left it pending.
+   * NO_SECOND_OPINION marker, rejected a human gate, left it pending, or
+   * (second_opinion) returned the record as the tool's output.
    */
-  action: "replied" | "marker" | "rejected" | "left_for_human"
+  action: "replied" | "marker" | "rejected" | "left_for_human" | "returned"
   /** The answer when there is one question: its labels joined with ", ". Null unless answered. */
   answer: string | null
   /** One array of labels per question. Null unless answered. */
@@ -70,6 +73,7 @@ export function buildResult(
     requestID: request.id,
     sessionID: request.sessionID,
     agent: agent ?? null,
+    source: "question",
     outcome: outcome.kind,
     action: "left_for_human",
     answer: null,
@@ -129,6 +133,11 @@ export function buildResult(
  * already knows (ids, agent, time) or that only the log needs.
  */
 export function formatTrailer(record: ResultRecord): string {
+  return `${RESULT_TRAILER} ${JSON.stringify(compactResult(record))}`
+}
+
+/** The record without ids, time and log-only fields: the trailer body and the second_opinion output. */
+export function compactResult(record: ResultRecord): Record<string, unknown> {
   const compact: Record<string, unknown> = {
     outcome: record.outcome,
     answer: record.answer,
@@ -140,7 +149,7 @@ export function formatTrailer(record: ResultRecord): string {
   }
   if (record.answers && record.answers.length > 1) compact.answers = record.answers
   if (record.reason) compact.reason = record.reason
-  return `${RESULT_TRAILER} ${JSON.stringify(compact)}`
+  return compact
 }
 
 /** Append the trailer as one more element of the last question's answer. */

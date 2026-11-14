@@ -70,6 +70,15 @@ export interface GuidanceConfig {
   inheritedGlobalPath?: string
 }
 
+export interface SecondOpinionConfig {
+  /**
+   * Register the second_opinion tool. It is then denied globally unless the
+   * opencode config sets a global rule for it; agents opt in with
+   * `permission: { second_opinion: allow }`.
+   */
+  enabled: boolean
+}
+
 /** Config keys a profile may override. Everything else stays global. */
 export const PROFILE_KEYS = [
   "engine",
@@ -155,6 +164,8 @@ export interface Config {
    * rest.
    */
   registerAgents: boolean
+  /** The second_opinion tool (plugin-wide; not a profile key). */
+  secondOpinion: SecondOpinionConfig
   /** Per-agent overrides keyed by agent name (case-insensitive). */
   profiles: Record<string, ProfileConfig>
 }

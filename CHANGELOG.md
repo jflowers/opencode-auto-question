@@ -19,6 +19,12 @@ All notable changes to this project are documented here. The format follows
   timed-out questions. `resultTrailer: true` (top level or per profile) also
   appends `AUTO_QUESTION_RESULT {json}` to the answer the asking agent
   receives, including a `NO_SECOND_OPINION:` marker reply.
+- A `second_opinion` tool (#22), opt-in with `secondOpinion.enabled`. An
+  agent passes a question, options and only the case facts, and gets the
+  structured result back as the tool's output. It runs under the calling
+  agent's profile, never reads the caller's message, and never waits for a
+  human. When enabled it is denied globally unless configured; allow it per
+  agent (`second_opinion: allow`). The bundled `autonomy` agent denies it.
 - The LLM and guidance-agent engines are asked for a one-sentence
   `rationale`, and every engine reports the model that decided.
 - Per-agent `profiles` (#8): overrides for one agent's questions (engine,
