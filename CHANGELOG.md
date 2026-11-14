@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- A subagent that timed out (or whose call failed) was deleted while its
+  agent loop could still be running, and opencode logged FOREIGN KEY errors
+  for the writes that followed. The plugin now aborts such a session before
+  deleting it.
+
 ## [0.3.0] - 2026-11-14
 
 ### Added

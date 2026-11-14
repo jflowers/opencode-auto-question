@@ -12,7 +12,12 @@ export interface SubagentOptions {
   prompt: string
   timeoutMs: number
   title: string
+  /** Wait before deleting the child session (tests shorten it). */
+  cleanupDelayMs?: number
 }
+
+/** Default wait between the child session finishing (or being aborted) and its deletion. */
+export const SUBAGENT_CLEANUP_DELAY_MS = 5_000
 
 function withTimeout<T>(work: Promise<T>, ms: number): Promise<T | null> {
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -45,6 +50,9 @@ export async function runSubagentDetailed(
 ): Promise<{ text: string; model?: string } | null> {
   const httpClient = (input.client as any)._client
   let sessionID: string | undefined
+  // True once the child session may still be running: a timeout or a failed
+  // message call. It is aborted before it is deleted.
+  let unfinished = false
   const model = opts.model ? parseModelRef(opts.model) : null
 
   try {
@@ -71,6 +79,7 @@ export async function runSubagentDetailed(
       opts.timeoutMs,
     )
     if (!result) {
+      unfinished = true
       log("warn", "subagent timed out", { sessionID, timeoutMs: opts.timeoutMs, title: opts.title })
       return null
     }
@@ -89,23 +98,41 @@ export async function runSubagentDetailed(
         : undefined
     return replyModel ? { text, model: replyModel } : { text }
   } catch (e) {
+    unfinished = sessionID !== undefined
     log("warn", "subagent run failed", { error: String(e), title: opts.title })
     return null
   } finally {
-    // Delay the DELETE to let the server's SessionProcessor.cleanup finish
-    // persisting final message state (step-start parts, token counts, etc.).
-    // The synchronous /session/{id}/message POST returns before cleanup
-    // completes; an immediate DELETE races with that background write and
-    // causes FOREIGN KEY constraint errors.
-    if (sessionID) {
-      const id = sessionID
-      setTimeout(async () => {
-        try {
-          await httpClient.delete({ url: `/session/${id}` })
-        } catch (e) {
-          log("debug", "subagent session cleanup failed", { sessionID: id, error: String(e) })
-        }
-      }, 5_000)
-    }
+    if (sessionID) cleanUp(httpClient, sessionID, unfinished, opts.cleanupDelayMs ?? SUBAGENT_CLEANUP_DELAY_MS)
   }
+}
+
+/**
+ * Delete the child session in the background, without delaying the caller.
+ *
+ * A child that may still be running (timeout, failed call) is aborted
+ * first: deleting a session whose agent loop is still writing parts and
+ * messages makes those writes fail with FOREIGN KEY errors. The DELETE is
+ * then delayed either way, so the server's SessionProcessor.cleanup can
+ * finish persisting final state (step-start parts, token counts): the
+ * synchronous /session/{id}/message POST, and an abort, return before that
+ * cleanup completes.
+ */
+function cleanUp(httpClient: any, sessionID: string, abort: boolean, delayMs: number): void {
+  void (async () => {
+    if (abort) {
+      try {
+        await httpClient.post({ url: `/session/${sessionID}/abort` })
+        log("debug", "aborted unfinished subagent session", { sessionID })
+      } catch (e) {
+        log("debug", "subagent session abort failed", { sessionID, error: String(e) })
+      }
+    }
+    setTimeout(async () => {
+      try {
+        await httpClient.delete({ url: `/session/${sessionID}` })
+      } catch (e) {
+        log("debug", "subagent session cleanup failed", { sessionID, error: String(e) })
+      }
+    }, delayMs)
+  })()
 }
