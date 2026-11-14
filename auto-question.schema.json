@@ -231,7 +231,7 @@
         "enabled": {
           "type": "boolean",
           "default": false,
-          "description": "Register the tool. It is then denied globally unless your opencode config sets a global second_opinion rule; allow it per agent with permission: { second_opinion: allow }."
+          "description": "Register the tool. It is then denied globally unless your opencode config sets a global second_opinion rule, and allowed for every agent with a profile unless the agent sets its own second_opinion rule. Other agents opt in with permission: { second_opinion: allow }."
         }
       }
     },

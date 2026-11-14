@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import { DEFAULT_CONFIG } from "./config"
+import { loadBundledAgents, registerAgents } from "./agents"
 import {
+  allowSecondOpinionForProfiles,
   defaultDenySecondOpinion,
   parseSecondOpinionArgs,
   runSecondOpinion,
@@ -187,5 +189,41 @@ describe("defaultDenySecondOpinion", () => {
     const blanket: { permission?: unknown } = { permission: "allow" }
     expect(defaultDenySecondOpinion(blanket)).toBe("blanket")
     expect(blanket.permission).toBe("allow")
+  })
+})
+
+describe("allowSecondOpinionForProfiles", () => {
+  const gates = { humanGatedAgents: ["curator"] }
+
+  test("allows it for agents with a profile, after any '*' rule", () => {
+    const opencode: { agent?: Record<string, unknown> } = {
+      agent: {
+        "hud-supervisor": { permission: { "*": "deny", read: "allow" } },
+        Reviewer: { prompt: "r" },
+        build: { permission: { bash: "ask" } },
+      },
+    }
+    const r = allowSecondOpinionForProfiles(opencode, { ...gates, profiles: { "hud-supervisor": {}, reviewer: {} } })
+    expect(r).toEqual({ allowed: ["hud-supervisor", "Reviewer"], kept: [], gated: [], undefinedAgents: [] })
+    const sup = opencode.agent!["hud-supervisor"] as { permission: Record<string, string> }
+    expect(Object.entries(sup.permission)).toEqual([["*", "deny"], ["read", "allow"], ["second_opinion", "allow"]])
+    expect(opencode.agent!.Reviewer).toEqual({ prompt: "r", permission: { second_opinion: "allow" } })
+    expect(opencode.agent!.build).toEqual({ permission: { bash: "ask" } })
+  })
+
+  test("an explicit rule wins, including the bundled autonomy agent's deny", () => {
+    const opencode: { agent?: Record<string, unknown> } = { agent: { mine: { permission: { second_opinion: "deny" } } } }
+    registerAgents(opencode, loadBundledAgents())
+    const r = allowSecondOpinionForProfiles(opencode, { ...gates, profiles: { mine: {}, autonomy: {} } })
+    expect(r.kept.sort()).toEqual(["autonomy", "mine"])
+    expect((opencode.agent!.autonomy as { permission: Record<string, string> }).permission.second_opinion).toBe("deny")
+    expect((opencode.agent!.mine as { permission: Record<string, string> }).permission.second_opinion).toBe("deny")
+  })
+
+  test("never allows a human-gated agent, never creates an agent, and leaves a blanket permission alone", () => {
+    const opencode: { agent?: Record<string, unknown> } = { agent: { curator: {}, open: { permission: "allow" } } }
+    const r = allowSecondOpinionForProfiles(opencode, { ...gates, profiles: { curator: {}, ghost: {}, open: {} } })
+    expect(r).toEqual({ allowed: [], kept: ["open"], gated: ["curator"], undefinedAgents: ["ghost"] })
+    expect(opencode.agent).toEqual({ curator: {}, open: { permission: "allow" } })
   })
 })

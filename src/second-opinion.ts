@@ -6,7 +6,7 @@ import { appendResult, log } from "./log"
 import { avoidAskerModel } from "./model"
 import { decideOutcome, type HandlerDeps, type Outcome } from "./orchestrator"
 import { buildResult, compactResult, type ResultRecord } from "./result"
-import type { QuestionInfo, QuestionRequest } from "./types"
+import type { Config, QuestionInfo, QuestionRequest } from "./types"
 
 /** Name the tool is registered under (and the permission key that allows it). */
 export const SECOND_OPINION_TOOL = "second_opinion"
@@ -169,4 +169,53 @@ export function defaultDenySecondOpinion(opencodeConfig: { permission?: unknown 
   if (SECOND_OPINION_TOOL in perm) return "kept"
   perm[SECOND_OPINION_TOOL] = "deny"
   return "added"
+}
+
+/**
+ * With the tool enabled, allow it for every agent that has a profile: a
+ * profile is the user saying how that agent's decisions are made, so its
+ * second_opinion calls have settings to run under. An explicit
+ * second_opinion rule on the agent (the user's, or a bundled agent's, such
+ * as autonomy's deny) is kept, a human-gated agent is never allowed (its
+ * calls are refused anyway), and an agent opencode doesn't define is not
+ * created. Run after the bundled agents are registered.
+ */
+export function allowSecondOpinionForProfiles(
+  opencodeConfig: { agent?: Record<string, unknown> },
+  config: Pick<Config, "profiles" | "humanGatedAgents">,
+): { allowed: string[]; kept: string[]; gated: string[]; undefinedAgents: string[] } {
+  const out = { allowed: [] as string[], kept: [] as string[], gated: [] as string[], undefinedAgents: [] as string[] }
+  const agents = opencodeConfig.agent ?? {}
+  for (const profile of Object.keys(config.profiles)) {
+    if (isHumanGatedAgent(profile, config.humanGatedAgents)) {
+      out.gated.push(profile)
+      continue
+    }
+    const names = Object.keys(agents).filter((n) => n.toLowerCase() === profile.toLowerCase())
+    if (names.length === 0) {
+      out.undefinedAgents.push(profile)
+      continue
+    }
+    for (const name of names) {
+      const def = agents[name]
+      if (def === null || typeof def !== "object" || Array.isArray(def)) {
+        out.kept.push(name)
+        continue
+      }
+      const agent = def as Record<string, unknown>
+      const perm = agent.permission
+      if (perm === undefined || perm === null) {
+        agent.permission = { [SECOND_OPINION_TOOL]: "allow" }
+      } else if (typeof perm !== "object" || Array.isArray(perm) || SECOND_OPINION_TOOL in perm) {
+        // A blanket permission string, or an explicit rule: the agent's own call.
+        out.kept.push(name)
+        continue
+      } else {
+        // Added last, so it wins over a "*" rule earlier in the same block.
+        ;(perm as Record<string, unknown>)[SECOND_OPINION_TOOL] = "allow"
+      }
+      out.allowed.push(name)
+    }
+  }
+  return out
 }

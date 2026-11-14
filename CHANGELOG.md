@@ -6,6 +6,19 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- With `secondOpinion.enabled`, the `second_opinion` tool is now allowed for
+  every agent that has a profile, as well as for agents that allow it
+  themselves. An explicit `second_opinion` rule on the agent still wins (the
+  bundled `autonomy` agent keeps its deny), human-gated agents are never
+  allowed it, and every other agent stays denied by default.
+
+### Fixed
+- A profile for an agent that isn't in `agents` was logged as unused (at
+  error level) even with `secondOpinion.enabled`, though the
+  `second_opinion` tool uses it. The warning now only appears when the tool
+  is off.
+
 ## [0.3.1] - 2026-11-14
 
 ### Fixed

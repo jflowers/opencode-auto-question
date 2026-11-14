@@ -348,6 +348,14 @@ describe("profiles", () => {
     expect(warnings.some((w) => w.includes("profiles.curator") && w.includes("human-gated"))).toBe(true)
   })
 
+  test("with second_opinion on, a profile for an agent not in agents is used by the tool, so no warning", () => {
+    const warnings: string[] = []
+    load({ ...base, secondOpinion: { enabled: true }, profiles: { reviewer: {}, curator: {} } }, warnings)
+    expect(warnings.some((w) => w.includes("profiles.reviewer"))).toBe(false)
+    // A gated agent's second_opinion calls are never answered: still unused.
+    expect(warnings.some((w) => w.includes("profiles.curator") && w.includes("human-gated"))).toBe(true)
+  })
+
   describe("guidance", () => {
     test("a profile's own globalPath adds to the shared one by default", () => {
       const config = load({ ...base, profiles: { "hud-supervisor": { guidance: { globalPath: "/hud/guidance" } } } })

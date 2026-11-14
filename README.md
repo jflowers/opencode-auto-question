@@ -297,16 +297,16 @@ It runs the same pipeline as a question (guidance agent, pass 1, pass 2 with con
 
 `HUMAN_GATE:` questions and calls from agents in `humanGatedAgents` are never answered. Each call is written to `results.jsonl` with `"source": "second_opinion"`.
 
-**Who can call it:** when the tool is enabled, the plugin adds a global `"second_opinion": "deny"` to the opencode config unless you set a global rule for it yourself. Allow it per agent:
+**Who can call it:** when the tool is enabled, the plugin adds a global `"second_opinion": "deny"` to the opencode config unless you set a global rule for it yourself. It then allows the tool for every agent that has a [profile](#profiles): a profile says how that agent's decisions are made, so its calls have settings to run under. An agent can also be allowed directly:
 
 ```yaml
 # agents/hud-supervisor.md
 permission:
-  question: allow
+  "*": deny
   second_opinion: allow
 ```
 
-The bundled `autonomy` agent denies it.
+An explicit `second_opinion` rule on an agent always wins over the profile, so `"second_opinion": "deny"` keeps a profiled agent from calling it. The bundled `autonomy` agent denies it this way: its questions already get an auto-answer with you as the fallback, and `second_opinion` would skip that fallback. Human-gated agents are never allowed it, and a profile for an agent opencode doesn't define creates no agent. The log lists which agents were allowed.
 
 ### Profiles
 
@@ -332,7 +332,7 @@ Guidance in a profile:
 - `"inheritGlobal": false` drops the top-level global guidance. Only the profile's own `globalPath` (if any) and the project's guidance are loaded.
 - `"projectPath": ""` drops the project's guidance.
 
-Profile values are checked when the config loads. An invalid value names the profile and leaves the plugin inactive, the same as an invalid top-level value. A profile for an agent that isn't in `agents` is logged as unused.
+Profile values are checked when the config loads. An invalid value names the profile and leaves the plugin inactive, the same as an invalid top-level value. A profile for an agent that isn't in `agents` is logged as unused, unless `secondOpinion.enabled` is on: the `second_opinion` tool uses the calling agent's profile whether or not that agent's questions are auto-answered.
 
 ### Choosing models
 

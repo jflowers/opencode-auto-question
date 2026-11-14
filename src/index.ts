@@ -5,7 +5,12 @@ import { configSources, loadConfig } from "./config"
 import { AgentTracker } from "./detect"
 import { handleQuestionAsked, markSettled, type HandlerDeps } from "./orchestrator"
 import { resolveJevCarrier } from "./engines/jev"
-import { defaultDenySecondOpinion, SECOND_OPINION_TOOL, secondOpinionTool } from "./second-opinion"
+import {
+  allowSecondOpinionForProfiles,
+  defaultDenySecondOpinion,
+  SECOND_OPINION_TOOL,
+  secondOpinionTool,
+} from "./second-opinion"
 import { log, setVerbose } from "./log"
 import type { QuestionRequest } from "./types"
 import { markServerLoaded, setup } from "./v2"
@@ -121,18 +126,32 @@ const plugin: Plugin = async (input) => {
         log("info", "second_opinion tool registered", {
           globalPermission:
             did === "added"
-              ? "deny (added; allow it per agent)"
+              ? "deny (added; allowed below for agents with a profile)"
               : did === "kept"
                 ? "kept the configured rule"
                 : "blanket permission string; left as is",
         })
       }
-      if (!bundledAgents) return
-      try {
-        const { added, filledIn } = registerAgents(opencodeConfig as { agent?: Record<string, unknown> }, bundledAgents)
-        log("info", "bundled agents", { added, filledInUnderUserSettings: filledIn })
-      } catch (e) {
-        log("error", "agent registration failed", { error: String(e) })
+      if (bundledAgents) {
+        try {
+          const { added, filledIn } = registerAgents(opencodeConfig as { agent?: Record<string, unknown> }, bundledAgents)
+          log("info", "bundled agents", { added, filledInUnderUserSettings: filledIn })
+        } catch (e) {
+          log("error", "agent registration failed", { error: String(e) })
+        }
+      }
+      if (secondOpinion) {
+        try {
+          const r = allowSecondOpinionForProfiles(opencodeConfig as { agent?: Record<string, unknown> }, config)
+          log("info", "second_opinion for agents with a profile", {
+            allowed: r.allowed,
+            keptExplicitRule: r.kept,
+            humanGated: r.gated,
+            noSuchAgent: r.undefinedAgents,
+          })
+        } catch (e) {
+          log("error", "second_opinion profile permissions failed", { error: String(e) })
+        }
       }
     },
     ...(secondOpinion ? { tool: { [SECOND_OPINION_TOOL]: secondOpinionTool(deps) } } : {}),

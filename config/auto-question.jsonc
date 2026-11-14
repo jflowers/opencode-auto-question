@@ -132,8 +132,10 @@
   // second_opinion tool: an agent passes a question, options and only the case
   // facts, and gets {outcome, answer, confidence, pass, engine, model,
   // rationale, reason} back as JSON. It never asks a human. When enabled it is
-  // denied globally (unless your opencode config sets a global rule for it);
-  // allow it per agent: permission: { second_opinion: allow }.
+  // denied globally (unless your opencode config sets a global rule for it)
+  // and allowed for every agent with a profile below, unless that agent sets
+  // its own second_opinion rule. Other agents opt in with
+  // permission: { second_opinion: allow }.
   "secondOpinion": { "enabled": false },
 
   // Per-agent overrides, keyed by agent name (case-insensitive). Each is

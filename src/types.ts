@@ -83,9 +83,10 @@ export interface GuidanceConfig {
 
 export interface SecondOpinionConfig {
   /**
-   * Register the second_opinion tool. It is then denied globally unless the
-   * opencode config sets a global rule for it; agents opt in with
-   * `permission: { second_opinion: allow }`.
+   * Register the second_opinion tool. It is denied globally unless the
+   * opencode config sets a global rule for it, and allowed for every agent
+   * with a profile unless that agent sets its own rule. Other agents opt in
+   * with `permission: { second_opinion: allow }`.
    */
   enabled: boolean
 }
