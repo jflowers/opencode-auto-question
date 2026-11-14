@@ -47,7 +47,12 @@
     "baseUrl": "https://openrouter.ai/api/v1",
     "apiKey": "{env:OPENROUTER_API_KEY}",
     "model": "openrouter/auto",
-    "timeoutMs": 60000
+    "timeoutMs": 60000,
+    // Used instead of "model" when it is the asking session's own model
+    // (compared by model name, whatever the provider), so a second opinion
+    // doesn't share the asker's blind spots. The first that differs from the
+    // asker is used; with none, "model" is kept and a warning is logged.
+    "alternateModels": []
   },
 
   // Pass 1 (no context) answers at or above this confidence immediately.
@@ -57,8 +62,12 @@
   // above it the answer is sent, below it the human answers via the TUI form.
   "fallbackThreshold": 0.35,
 
+  // "model" in contextGathering and agentDecision: "provider/model" (opencode
+  // ids, e.g. "openrouter/qwen/qwen3-coder") to run the subagent with. Empty
+  // uses the agent's own model.
   "contextGathering": {
     "agent": "auto-question-ctx",
+    "model": "",
     "timeoutMs": 30000
   },
 
@@ -71,6 +80,7 @@
   // question goes to the human (never a generic engine override).
   "agentDecision": {
     "agent": "auto-question-decide",
+    "model": "",
     "timeoutMs": 60000
   },
 
@@ -135,7 +145,8 @@
   //   "hud-supervisor": {
   //     "guidance": { "globalPath": "auto-question/hud-guidance", "projectPath": "", "inheritGlobal": false },
   //     "confidenceThreshold": 0.7,
-  //     "llm": { "model": "qwen/qwen3-235b-a22b" }
+  //     "llm": { "model": "qwen/qwen3-235b-a22b", "alternateModels": ["deepseek/deepseek-v4"] },
+  //     "contextGathering": { "model": "openrouter/qwen/qwen3-coder" }
   //   }
   "profiles": {}
 }

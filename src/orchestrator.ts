@@ -8,6 +8,7 @@ import { loadGuidance } from "./guidance"
 import { decideWithAgent } from "./engines/agent"
 import { decideWithJev, resolveJevCarrier } from "./engines/jev"
 import { decideWithLlm } from "./engines/llm"
+import { avoidAskerModel } from "./model"
 import { appendResult, log } from "./log"
 import { buildResult, formatTrailer, withTrailer, type ResultRecord } from "./result"
 
@@ -601,6 +602,10 @@ export async function handleQuestionAsked(
     return
   }
   if (scoped.config !== config) log("info", "using profile", { requestID: request.id, agent })
+  if (!gate) {
+    const askerModel = await tracker.resolveModel(input.client, request.sessionID)
+    scoped = { ...scoped, config: avoidAskerModel(scoped.config, askerModel, request.id) }
+  }
 
   if (gate) {
     // Check and mark with no await in between: the same request can arrive

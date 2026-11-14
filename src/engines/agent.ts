@@ -24,6 +24,7 @@ export async function decideWithAgent(
   const reply = await runSubagentDetailed(input, {
     parentSessionID: request.sessionID,
     agent: config.agentDecision.agent,
+    ...(config.agentDecision.model ? { model: config.agentDecision.model } : {}),
     prompt,
     timeoutMs: config.agentDecision.timeoutMs,
     title: "auto-question: decision",
@@ -57,7 +58,7 @@ export async function decideWithAgent(
     confidences: parsed.confidences,
     engine: "agent",
     guidanceCovered: parsed.covered,
-    model: reply.model ?? `agent:${config.agentDecision.agent}`,
+    model: reply.model ?? (config.agentDecision.model || `agent:${config.agentDecision.agent}`),
     ...(parsed.rationale ? { rationale: parsed.rationale } : {}),
   }
 }

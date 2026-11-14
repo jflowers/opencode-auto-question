@@ -238,6 +238,76 @@ describe("handleQuestionAsked decision flow", () => {
       expect(h.engineRequests[0].model).toBe("qwen/qwen3")
     })
 
+    test("a profile's subagent models are sent with the child-session prompts", async () => {
+      const config = {
+        agents,
+        profiles: {
+          "hud-supervisor": {
+            contextGathering: { model: "openrouter/qwen/qwen3-coder" },
+            agentDecision: { model: "openrouter/deepseek/deepseek-v4" },
+          },
+        },
+      }
+      h = createHarness({
+        agent: "hud-supervisor",
+        engine: [decide(0.4), decide(0.9)],
+        guidance: "Prefer sqlite.",
+        subagents: { decision: null, context: "Team uses sqlite." },
+        config,
+      })
+      await handleQuestionAsked(h.deps, q(), "v1")
+      const bodies = h.posts.filter((p) => /^\/session\/child_\d+\/message$/.test(p.url)).map((p) => p.body)
+      expect(bodies.map((b) => b.model)).toEqual([
+        { providerID: "openrouter", modelID: "deepseek/deepseek-v4" },
+        { providerID: "openrouter", modelID: "qwen/qwen3-coder" },
+      ])
+    })
+
+    test("without a subagent model the agent's own model is used (no model in the body)", async () => {
+      h = createHarness({ agent: "autonomy", engine: [decide(0.4), decide(0.9)], subagents: { context: "x" } })
+      await handleQuestionAsked(h.deps, q(), "v1")
+      const body = h.posts.find((p) => /^\/session\/child_\d+\/message$/.test(p.url))!.body
+      expect(body).not.toHaveProperty("model")
+    })
+
+    describe("the asking session's own model", () => {
+      const hud = (llm: Record<string, unknown>) => ({ agents, profiles: { "hud-supervisor": { llm } } })
+
+      test("is swapped for the first alternate that differs from it, and the record names it", async () => {
+        h = createHarness({
+          agent: "hud-supervisor",
+          askerModel: "zai/glm-5.3",
+          engine: [decide(0.9)],
+          config: hud({ model: "z-ai/glm-5.3", alternateModels: ["z-ai/glm-5.3:free", "qwen/qwen3"] }),
+        })
+        await handleQuestionAsked(h.deps, q(), "v1")
+        expect(h.engineRequests[0].model).toBe("qwen/qwen3")
+        expect(h.results[0]!.model).toBe("qwen/qwen3")
+      })
+
+      test("is kept, with a warning, when no alternate is configured", async () => {
+        h = createHarness({
+          agent: "hud-supervisor",
+          askerModel: "openrouter/z-ai/glm-5.3",
+          engine: [decide(0.9)],
+          config: hud({ model: "z-ai/glm-5.3" }),
+        })
+        await handleQuestionAsked(h.deps, q(), "v1")
+        expect(h.engineRequests[0].model).toBe("z-ai/glm-5.3")
+      })
+
+      test("a different asker model leaves llm.model alone", async () => {
+        h = createHarness({
+          agent: "hud-supervisor",
+          askerModel: "anthropic/claude-sonnet-5-5",
+          engine: [decide(0.9)],
+          config: hud({ model: "z-ai/glm-5.3", alternateModels: ["qwen/qwen3"] }),
+        })
+        await handleQuestionAsked(h.deps, q(), "v1")
+        expect(h.engineRequests[0].model).toBe("z-ai/glm-5.3")
+      })
+    })
+
     test("inheritGlobal false: the decision agent sees only the profile's guidance", async () => {
       const shared = guidanceDir("SHARED: always proceed.")
       const own = guidanceDir("HUD: judge the proposal on the evidence.")

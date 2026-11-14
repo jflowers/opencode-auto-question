@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { dirname, isAbsolute, join, resolve } from "node:path"
 import { PROFILE_KEYS, type Config, type ProfileConfig } from "./types"
+import { parseModelRef } from "./model"
 import { BUILTIN_HUMAN_GATED_AGENTS, gatedAgentOverlap, isHumanGatedAgent, mergeGatedAgents } from "./gate"
 
 export class ConfigError extends Error {}
@@ -60,15 +61,18 @@ export const DEFAULT_CONFIG: Config = {
     apiKey: "{env:OPENROUTER_API_KEY}",
     model: "openrouter/auto",
     timeoutMs: 60_000,
+    alternateModels: [],
   },
   confidenceThreshold: 0.6,
   fallbackThreshold: 0.35,
   contextGathering: {
     agent: "auto-question-ctx",
+    model: "",
     timeoutMs: 30_000,
   },
   agentDecision: {
     agent: "auto-question-decide",
+    model: "",
     timeoutMs: 60_000,
   },
   guidance: {
@@ -312,10 +316,16 @@ function normalizeBehavior(c: Config, prefix: string): void {
     }
   }
 
+  const alternates = c.llm.alternateModels
+  if (!Array.isArray(alternates) || !alternates.every((m) => typeof m === "string" && m.length > 0)) {
+    throw new ConfigError(prefix + "llm.alternateModels must be an array of non-empty strings")
+  }
+
   const cg = c.contextGathering
   if (typeof cg.agent !== "string" || cg.agent.length === 0) {
     throw new ConfigError(prefix + "contextGathering.agent must be a non-empty string")
   }
+  normalizeSubagentModel(cg, prefix + "contextGathering")
   if (typeof cg.timeoutMs !== "number" || cg.timeoutMs < 1000) {
     cg.timeoutMs = DEFAULT_CONFIG.contextGathering.timeoutMs
   }
@@ -324,6 +334,7 @@ function normalizeBehavior(c: Config, prefix: string): void {
   if (typeof ad.agent !== "string" || ad.agent.length === 0) {
     throw new ConfigError(prefix + "agentDecision.agent must be a non-empty string")
   }
+  normalizeSubagentModel(ad, prefix + "agentDecision")
   if (typeof ad.timeoutMs !== "number" || ad.timeoutMs < 1000) {
     ad.timeoutMs = DEFAULT_CONFIG.agentDecision.timeoutMs
   }
@@ -336,6 +347,17 @@ function normalizeBehavior(c: Config, prefix: string): void {
   if (g.inheritedGlobalPath !== undefined && typeof g.inheritedGlobalPath !== "string") delete g.inheritedGlobalPath
   if (typeof g.maxChars !== "number" || g.maxChars < 1000) {
     g.maxChars = DEFAULT_CONFIG.guidance.maxChars
+  }
+}
+
+/** A subagent model is "provider/model"; an empty string means the agent's own model. */
+function normalizeSubagentModel(block: { model: string }, name: string): void {
+  if (block.model === undefined || block.model === "") {
+    block.model = ""
+    return
+  }
+  if (typeof block.model !== "string" || !parseModelRef(block.model)) {
+    throw new ConfigError(`${name}.model must be "provider/model" (e.g. "openrouter/qwen/qwen3-coder")`)
   }
 }
 

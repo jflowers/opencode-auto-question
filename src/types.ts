@@ -41,16 +41,27 @@ export interface LlmConfig {
   apiKey: string
   model: string
   timeoutMs: number
+  /**
+   * Models to use instead of `model` when it is the asking session's own
+   * model (compared by model name, whatever the provider), so a second
+   * opinion does not share the asker's blind spots. The first that differs
+   * from the asker is used; with none, `model` is kept and a warning logged.
+   */
+  alternateModels: string[]
 }
 
 export interface ContextGatheringConfig {
   agent: string
+  /** "provider/model" to run the subagent with; "" uses the agent's own model. */
+  model: string
   timeoutMs: number
 }
 
 export interface AgentDecisionConfig {
   /** Hidden subagent that investigates + decides following project guidance. */
   agent: string
+  /** "provider/model" to run the subagent with; "" uses the agent's own model. */
+  model: string
   timeoutMs: number
 }
 

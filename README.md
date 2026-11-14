@@ -218,8 +218,11 @@ Dewey's `dewey gate auto-answer` startup check refuses `/dewey-distill` independ
 | `fallbackThreshold` | `0.35` | Applies only to a decision re-made in pass 2; below it goes to the human. When pass 2 doesn't run (no context) or fails, the pass-1 decision stays held to `confidenceThreshold` |
 | `immediateContext` | `true` | Fetch the model's reasoning text from the assistant message that called the question tool (tables, recommendations, etc.) and include as context for the decision engine |
 | `sessionSummary` | `true` | Inject a summary message into the session history after auto-answering or deferring to human (visible in the TUI, hidden from the model, keeps the session's agent/model) |
+| `llm.alternateModels` | `[]` | Models used instead of `llm.model` when it is the asking session's own model. See [Choosing models](#choosing-models) |
 | `contextGathering.agent` | `"auto-question-ctx"` | Subagent that gathers context |
+| `contextGathering.model` | `""` | `"provider/model"` to run the context subagent with; `""` uses the agent's own model |
 | `agentDecision.agent` | `"auto-question-decide"` | Pass-0 decision subagent that answers following project guidance |
+| `agentDecision.model` | `""` | `"provider/model"` to run the decision subagent with; `""` uses the agent's own model |
 | `agentDecision.timeoutMs` | `60000` | Timeout for the pass-0 decision agent |
 | `guidance.enabled` | `true` | Set `false` to disable pass 0 entirely |
 | `guidance.projectPath` | `".opencode/auto-question/guidance"` | Project guidance dir (relative to project root or absolute). `""` loads no project guidance |
@@ -328,6 +331,26 @@ Guidance in a profile:
 - `"projectPath": ""` drops the project's guidance.
 
 Profile values are checked when the config loads. An invalid value names the profile and leaves the plugin inactive, the same as an invalid top-level value. A profile for an agent that isn't in `agents` is logged as unused.
+
+### Choosing models
+
+A second opinion from the asker's own model shares its blind spots, so agreement means little. Three settings, at the top level or per profile, choose who decides:
+
+- `llm.model`: the model the LLM engine (pass 1 and pass 2) asks.
+- `contextGathering.model` and `agentDecision.model`: the model the pass-2 context subagent and the pass-0 guidance agent run with, as `"provider/model"` with opencode's provider and model ids (`"openrouter/qwen/qwen3-coder"`). Empty runs each agent on its own model.
+- `llm.alternateModels`: the plugin knows the asking session's model from its messages. When `llm.model` names the same model (compared by name, whatever the provider: `z-ai/glm-5.3`, `zai/glm-5.3` and `openrouter/z-ai/glm-5.3:free` match), the first alternate that differs is used instead and logged. With none, `llm.model` is kept and a warning is logged.
+
+```jsonc
+"profiles": {
+  "hud-supervisor": {
+    // The supervisor runs on GLM 5.3; its second opinion comes from elsewhere.
+    "llm": { "model": "qwen/qwen3-235b-a22b", "alternateModels": ["deepseek/deepseek-v4"] },
+    "contextGathering": { "model": "openrouter/qwen/qwen3-coder" }
+  }
+}
+```
+
+The [result](#results) names the model that decided.
 
 ## Notes
 

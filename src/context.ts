@@ -39,6 +39,7 @@ export async function gatherContext(
   const text = await runSubagent(input, {
     parentSessionID: request.sessionID,
     agent: config.contextGathering.agent,
+    ...(config.contextGathering.model ? { model: config.contextGathering.model } : {}),
     prompt: buildContextPrompt(request, facts),
     timeoutMs: config.contextGathering.timeoutMs,
     title: "auto-question: context gathering",
