@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `AUTO_QUESTION_LOG_DIR=<dir>` moves `log.txt` and `results.jsonl` to
+  another directory.
+
+### Fixed
+- The test suite wrote its fake sessions (`ses_1`) to the real
+  `~/.local/share/opencode-auto-question/log.txt`. Tests now log to a
+  temporary directory that is removed afterwards.
+
 ## [0.4.1] - 2026-11-15
 
 ### Fixed

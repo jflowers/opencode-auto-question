@@ -33,7 +33,10 @@ confidence gate with subagent context gathering, human fallback.
 - Agents: `agents/*.md`, registered by the plugin's `config` hook
   (`src/agents.ts`); a user's settings for an agent of the same name win
   and the bundled definition fills in the rest.
-- Log: `~/.local/share/opencode-auto-question/log.txt`
+- Log: `~/.local/share/opencode-auto-question/log.txt`, or
+  `$AUTO_QUESTION_LOG_DIR`. `bun test` preloads `src/test-preload.ts`
+  (`bunfig.toml`), which points it at a temp dir so tests never write to
+  the real log.
 - Release: in a PR, bump `version` in `package.json` and move the
   `CHANGELOG.md` entries under the new version. After it merges, push tag
   `v<version>` from `main`; `.github/workflows/publish.yml` publishes to npm.
