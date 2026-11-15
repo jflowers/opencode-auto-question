@@ -33,6 +33,7 @@ const base: Config = {
   profiles: {},
   registerAgents: true,
   secondOpinion: { enabled: false },
+  headless: false,
 }
 
 const KEYS = ["OPENCODE_API_KEY", "OPENROUTER_API_KEY"] as const

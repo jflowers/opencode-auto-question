@@ -232,6 +232,7 @@ Dewey's `dewey gate auto-answer` startup check refuses `/dewey-distill` independ
 | `resultTrailer` | `false` | Append `AUTO_QUESTION_RESULT {json}` to the answer the asking agent receives. See [Results](#results) |
 | `onDefer` | `"human"` | A question that isn't auto-answered: `"human"` leaves it pending for the TUI form; `"reject"` answers it with a `NO_SECOND_OPINION:` marker so unattended sessions continue. See [Unattended sessions](#unattended-sessions-ondefer) |
 | `secondOpinion.enabled` | `false` | Register the `second_opinion` tool. See [Second opinion tool](#second-opinion-tool) |
+| `headless` | `false` | Replace the `question` tool so every agent's questions are answered in the call and no form is ever shown. `AUTO_QUESTION_HEADLESS` overrides it. See [Headless mode](#headless-mode) |
 | `profiles` | `{}` | Per-agent overrides; see [Profiles](#profiles) |
 
 ### Config files
@@ -256,6 +257,28 @@ With `"onDefer": "reject"`, set at the top level or per profile:
 - **Deferred questions:** each question in the request gets one answer, a marker the asking agent can act on, for example `NO_SECOND_OPINION: deferred (confidence 0.31 < 0.35, pass 2)` or `NO_SECOND_OPINION: deferred — LLM API 503 (pass 1 (no gathered context))`. The run continues, at the latest after `handlerTimeoutMs`.
 - **`HUMAN_GATE:` questions:** these are rejected, never answered. opencode ends the agent's turn on a rejected question, so the run finishes instead of hanging, and the session summary records `HUMAN_GATE_UNANSWERED`. Questions from agents in `humanGatedAgents` aren't touched; those agents are never auto-answered.
 
+### Headless mode
+
+`onDefer` still needs the question to reach the plugin. In a headless run, questions can get stuck in ways it can't fix:
+- **Agents outside `agents`:** their forms stay pending.
+- **Long forms:** a form with more questions than fit the screen can sit waiting for input in a pane.
+- **Subagents:** opencode denies the `question` tool to every agent except `build` and `plan`, and a subagent started through `task` inherits that deny, so it can't ask at all.
+
+Headless mode handles a run with no TUI at all. Turn it on with `"headless": true`, or with `AUTO_QUESTION_HEADLESS=1` for one process. `0` turns it off even when the config enables it, and any value other than `1`, `true`, `yes`, `on`, `0`, `false`, `no` or `off` stops the plugin from loading.
+
+With headless on:
+- **No form is ever shown.** The plugin registers its own `question` tool in place of the built-in one. It runs the usual passes (human gate check, guidance, pass 1, pass 2) inside the tool call, and returns the result in the built-in tool's format.
+- **Every agent is answered.** The `agents` list doesn't apply, but each agent's profile still sets its engine, models and thresholds.
+- **Every agent can ask.** `question: allow` is added globally and to each agent that has no `question` rule of its own, so subagents can ask too. The plugin's own subagents (`contextGathering.agent`, `agentDecision.agent`) get `question: deny`. Agents with an explicit rule and human-gated agents are left as they are.
+- **Each question is decided on its own:**
+  - Pass 1 answers every question it is confident about.
+  - Pass 2 gathers context and re-asks only the questions pass 1 left.
+  - Any question still short of its threshold gets its own `NO_SECOND_OPINION:` marker, for example `NO_SECOND_OPINION: deferred (confidence 0.10 < 0.35, pass 2)`.
+  - On a handler timeout, the answers already decided are kept and the rest are marked.
+- **Human gates mark the whole form.** If any question carries `HUMAN_GATE:`, or the agent is human-gated, every question gets `HUMAN_GATE_UNANSWERED: <reason>`. Nothing on that form is answered, since the other answers may depend on the gated decision.
+- **`onDefer` and `sessionSummary` don't apply.** The tool output already appears in the session.
+- **Results:** each call writes a record with `source: "headless"` and `action: "returned"`. Its `outcome` is `answered`, `partial`, `deferred`, `timeout` or `gated`, and a `questions` array holds each question's outcome, answer, reply, confidence, threshold, pass and reason. `resultTrailer` works as it does for `question`.
+
 ### Results
 
 Every question from an auto-answered agent ends with one JSON line in `~/.local/share/opencode-auto-question/results.jsonl`, keyed by `requestID` and `sessionID`. That includes questions answered, deferred, left for the human, rejected as a human gate, and timed out. Questions from other agents aren't recorded.
@@ -265,7 +288,7 @@ Every question from an auto-answered agent ends with one JSON line in `~/.local/
 ```
 
 - `outcome`: `answered`, `deferred`, `gated` or `timeout`.
-- `action`: what the plugin did: `replied`, `marker` (a `NO_SECOND_OPINION:` reply under `onDefer: "reject"`), `rejected` (a human gate under `"reject"`) or `left_for_human`.
+- `action`: what the plugin did: `replied`, `marker` (a `NO_SECOND_OPINION:` reply under `onDefer: "reject"`), `rejected` (a human gate under `"reject"`), `left_for_human`, or `returned` (the `second_opinion` tool, or the `question` tool in [headless mode](#headless-mode)).
 - `answer`: the labels joined with `", "` when there is one question, otherwise `null`. It is `null` whenever the question wasn't answered.
 - `confidence`: the lowest per-question confidence of the decision that counted, or of the one that fell short.
 - `pass`: 0 (guidance agent), 1 or 2.

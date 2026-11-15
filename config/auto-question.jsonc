@@ -138,6 +138,14 @@
   // permission: { second_opinion: allow }.
   "secondOpinion": { "enabled": false },
 
+  // Headless mode: no question form is ever shown. The plugin's own
+  // `question` tool answers in the tool call for every agent (not just
+  // "agents"), and questions get `question: allow` in every agent without
+  // its own rule, subagents included. A question it can't answer confidently
+  // gets a NO_SECOND_OPINION: marker; a human gate gets HUMAN_GATE_UNANSWERED.
+  // AUTO_QUESTION_HEADLESS=1 (or 0) in the environment overrides this.
+  "headless": false,
+
   // Per-agent overrides, keyed by agent name (case-insensitive). Each is
   // deep-merged over the settings above for that agent's questions only.
   // Allowed keys: engine, jev, llm, confidenceThreshold, fallbackThreshold,

@@ -178,6 +178,15 @@ export interface Config {
   registerAgents: boolean
   /** The second_opinion tool (plugin-wide; not a profile key). */
   secondOpinion: SecondOpinionConfig
+  /**
+   * Headless mode (plugin-wide; not a profile key): the plugin registers its
+   * own `question` tool, which answers in the tool call for every agent, so
+   * no question form is ever shown. Questions it can't answer confidently
+   * get a NO_SECOND_OPINION: marker; human gates get HUMAN_GATE_UNANSWERED.
+   * `onDefer` and `sessionSummary` don't apply. AUTO_QUESTION_HEADLESS in
+   * the environment overrides it.
+   */
+  headless: boolean
   /** Per-agent overrides keyed by agent name (case-insensitive). */
   profiles: Record<string, ProfileConfig>
 }

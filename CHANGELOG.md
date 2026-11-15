@@ -6,6 +6,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Headless mode (issue #32), for runs with no TUI: `"headless": true`, or
+  `AUTO_QUESTION_HEADLESS=1` for one process.
+  - The plugin registers its own `question` tool in place of the built-in
+    one. It answers inside the tool call for every agent, not just `agents`,
+    so no question form is ever shown.
+  - `question: allow` is added globally and to every agent without its own
+    rule, so subagents can ask too. The plugin's own subagents get
+    `question: deny`.
+  - Each question on a form is decided on its own: confident answers are
+    returned, pass 2 re-asks only the questions pass 1 left, and the rest
+    get their own `NO_SECOND_OPINION:` marker.
+  - A human gate marks every question on the form `HUMAN_GATE_UNANSWERED`.
+  - Records use `source: "headless"`, a `partial` outcome and per-question
+    results.
+
 ## [0.3.2] - 2026-11-14
 
 ### Changed

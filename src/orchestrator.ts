@@ -41,7 +41,7 @@ export function markSettled(settled: Set<string>, requestID: string): void {
   }
 }
 
-function withTimeout<T>(work: Promise<T>, ms: number): Promise<T | "timeout"> {
+export function withTimeout<T>(work: Promise<T>, ms: number): Promise<T | "timeout"> {
   let timer: ReturnType<typeof setTimeout> | undefined
   const timeout = new Promise<"timeout">((resolve) => {
     timer = setTimeout(() => resolve("timeout"), ms)
@@ -172,7 +172,7 @@ async function injectSummary(deps: HandlerDeps, sessionID: string, text: string)
   }
 }
 
-async function decide(config: Config, questions: QuestionRequest["questions"], context: string | null): Promise<Decision> {
+export async function decide(config: Config, questions: QuestionRequest["questions"], context: string | null): Promise<Decision> {
   const order = config.engine === "auto" ? (["jev", "llm"] as const) : ([config.engine] as const)
   let last: Decision | undefined
 
@@ -203,7 +203,7 @@ async function decide(config: Config, questions: QuestionRequest["questions"], c
   return last ?? { ok: false, answers: [], confidences: [], engine: "llm", error: "no engine ran" }
 }
 
-function logDecision(pass: string, requestID: string, decision: Decision): void {
+export function logDecision(pass: string, requestID: string, decision: Decision): void {
   if (decision.ok) {
     log("info", `decision ${pass}`, {
       requestID,
@@ -293,7 +293,7 @@ const IMMEDIATE_CONTEXT_MAX_CHARS = 20_000
  * tool call. This contains the model's reasoning, tables, recommendations —
  * everything the human would see above the form in the TUI.
  */
-async function getImmediateContext(httpClient: any, request: QuestionRequest): Promise<string | null> {
+export async function getImmediateContext(httpClient: any, request: QuestionRequest): Promise<string | null> {
   const messageID = request.tool?.messageID
   if (!messageID) return null
   try {
@@ -355,7 +355,7 @@ export interface ProvidedContext {
 }
 
 /** Heading for the asking message's text when it is used as context. */
-const REASONING_LABEL = "Agent's reasoning before asking:"
+export const REASONING_LABEL = "Agent's reasoning before asking:"
 
 export async function decideOutcome(
   deps: HandlerDeps,
@@ -477,7 +477,7 @@ export const NO_SECOND_OPINION = "NO_SECOND_OPINION"
 /** Marker recorded for a human gate rejected under onDefer "reject". */
 export const HUMAN_GATE_UNANSWERED = "HUMAN_GATE_UNANSWERED"
 
-function oneLine(text: string, max = 200): string {
+export function oneLine(text: string, max = 200): string {
   const flat = text.replace(/\s+/g, " ").trim()
   return flat.length > max ? flat.slice(0, max - 3) + "..." : flat
 }
