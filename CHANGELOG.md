@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-11-15
+
 ### Added
 - `AUTO_QUESTION_LOG_DIR=<dir>` moves `log.txt` and `results.jsonl` to
   another directory.
@@ -193,7 +195,8 @@ First release on npm, as `opencode-auto-question`.
   every question for a human: v2 replaced question events with forms, and its
   plugin API does not expose answering a form.
 
-[Unreleased]: https://github.com/jflowers/opencode-auto-question/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/jflowers/opencode-auto-question/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/jflowers/opencode-auto-question/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/jflowers/opencode-auto-question/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/jflowers/opencode-auto-question/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/jflowers/opencode-auto-question/compare/v0.3.1...v0.3.2
