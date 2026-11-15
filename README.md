@@ -271,7 +271,7 @@ Headless mode handles a run with no TUI at all. Turn it on with `"headless": tru
 With headless on:
 - **No form is ever shown.** The plugin registers its own `question` tool in place of the built-in one. It runs the usual passes (human gate check, guidance, pass 1, pass 2) inside the tool call, and returns the result in the built-in tool's format.
 - **Every agent is answered.** The `agents` list doesn't apply, but each agent's profile still sets its engine, models and thresholds.
-- **Every agent can ask.** `question: allow` is added globally and to each agent that has no `question` rule of its own, so subagents can ask too. The plugin's own subagents (`contextGathering.agent`, `agentDecision.agent`) get `question: deny`. Agents with an explicit rule and human-gated agents are left as they are.
+- **Every agent can ask.** `question: allow` is added globally and to each agent that has no `question` rule of its own, so subagents can ask too. That includes human-gated agents: the tool never answers for them, so a gated subagent gets `HUMAN_GATE_UNANSWERED` and the playbook instead of a permission error. This only reaches agents opencode defines; a name listed only in `humanGatedAgents` has nothing to attach the permission to. Agents with an explicit `question` rule keep it, and the plugin's own subagents (`contextGathering.agent`, `agentDecision.agent`) get `question: deny`.
 - **Each question is decided on its own:**
   - Pass 1 answers every question it is confident about.
   - Pass 2 gathers context and re-asks only the questions pass 1 left.

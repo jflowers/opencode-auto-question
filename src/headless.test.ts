@@ -282,7 +282,7 @@ describe("allowQuestionHeadless", () => {
     agentDecision: { agent: "auto-question-decide", model: "", timeoutMs: 1 },
   }
 
-  test("allows question globally and on agents without a rule; denies it for the plugin's subagents", () => {
+  test("allows question globally and on agents without a rule, human-gated ones included; denies it for the plugin's subagents", () => {
     const opencode: { permission?: unknown; agent?: Record<string, unknown> } = {
       permission: { bash: "ask" },
       agent: {
@@ -297,14 +297,24 @@ describe("allowQuestionHeadless", () => {
     const r = allowQuestionHeadless(opencode, config)
     expect(r.global).toBe("added")
     expect(opencode.permission).toEqual({ bash: "ask", question: "allow" })
-    expect(r.allowed.sort()).toEqual(["helper", "reviewer"])
+    expect(r.allowed.sort()).toEqual(["curator", "helper", "reviewer"])
     expect(r.denied.sort()).toEqual(["auto-question-ctx", "auto-question-decide"])
     expect(r.kept.sort()).toEqual(["autonomy", "mine", "open"])
     expect(r.gated).toEqual(["curator"])
     const reviewer = opencode.agent!.reviewer as { permission: Record<string, string> }
     expect(Object.entries(reviewer.permission)).toEqual([["*", "deny"], ["read", "allow"], ["question", "allow"]])
     expect((opencode.agent!["auto-question-ctx"] as any).permission.question).toBe("deny")
-    expect(opencode.agent!.curator).toEqual({})
+    // A human-gated agent can ask, so it gets HUMAN_GATE_UNANSWERED and the playbook (issue #36).
+    expect(opencode.agent!.curator).toEqual({ permission: { question: "allow" } })
+  })
+
+  test("a human-gated agent with its own question rule keeps it", () => {
+    const opencode: { permission?: unknown; agent?: Record<string, unknown> } = {
+      agent: { curator: { permission: { question: "deny" } } },
+    }
+    const r = allowQuestionHeadless(opencode, config)
+    expect(r).toMatchObject({ allowed: [], kept: ["curator"], gated: [] })
+    expect(opencode.agent!.curator).toEqual({ permission: { question: "deny" } })
   })
 
   test("keeps a configured global rule and leaves a blanket permission alone", () => {
