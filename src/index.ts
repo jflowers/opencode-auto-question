@@ -1,7 +1,8 @@
 import type { Plugin, PluginModule } from "@opencode-ai/plugin"
 import { loadBundledAgents, registerAgents, type AgentDefinition } from "./agents"
 import { existsSync } from "node:fs"
-import { configSources, loadConfig } from "./config"
+import { configSources, HEADLESS_ENV, headlessFromEnv, loadConfig } from "./config"
+import { allowQuestionHeadless, headlessQuestionTool, QUESTION_TOOL } from "./headless"
 import { AgentTracker } from "./detect"
 import { handleQuestionAsked, markSettled, type HandlerDeps } from "./orchestrator"
 import { resolveJevCarrier } from "./engines/jev"
@@ -97,6 +98,7 @@ const plugin: Plugin = async (input) => {
     confidenceThreshold: config.confidenceThreshold,
     fallbackThreshold: config.fallbackThreshold,
     profiles: Object.keys(config.profiles),
+    headless: config.headless ? `on (${headlessFromEnv() === undefined ? "config" : HEADLESS_ENV})` : "off",
   })
 
   const deps: HandlerDeps = {
@@ -119,6 +121,12 @@ const plugin: Plugin = async (input) => {
   }
 
   const secondOpinion = config.secondOpinion.enabled
+  const headless = config.headless
+  const tools = {
+    ...(secondOpinion ? { [SECOND_OPINION_TOOL]: secondOpinionTool(deps) } : {}),
+    // Replaces the built-in question tool: answers in the call, no form.
+    ...(headless ? { [QUESTION_TOOL]: headlessQuestionTool(deps) } : {}),
+  }
   return {
     config: async (opencodeConfig) => {
       if (secondOpinion) {
@@ -153,8 +161,23 @@ const plugin: Plugin = async (input) => {
           log("error", "second_opinion profile permissions failed", { error: String(e) })
         }
       }
+      if (headless) {
+        try {
+          const r = allowQuestionHeadless(opencodeConfig as { permission?: unknown; agent?: Record<string, unknown> }, config)
+          log("info", "headless: question allowed", {
+            globalPermission:
+              r.global === "added" ? "allow (added)" : r.global === "kept" ? "kept the configured rule" : "blanket permission string; left as is",
+            allowed: r.allowed,
+            deniedInternal: r.denied,
+            keptExplicitRule: r.kept,
+            humanGated: r.gated,
+          })
+        } catch (e) {
+          log("error", "headless question permissions failed", { error: String(e) })
+        }
+      }
     },
-    ...(secondOpinion ? { tool: { [SECOND_OPINION_TOOL]: secondOpinionTool(deps) } } : {}),
+    ...(Object.keys(tools).length > 0 ? { tool: tools } : {}),
     event: async ({ event }) => {
       try {
         onEvent(deps, inflight, event)

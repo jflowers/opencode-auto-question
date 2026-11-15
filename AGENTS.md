@@ -23,6 +23,10 @@ confidence gate with subagent context gathering, human fallback.
   `curator`; keep it in step when config sources change. The plugin itself
   drops human-gated agents after merging every source, so it does not rely
   on Dewey's check.
+- Headless mode (`src/headless.ts`, `headless` / `AUTO_QUESTION_HEADLESS`):
+  the plugin registers its own `question` tool in place of the built-in one,
+  answers in the call per question for every agent, and adds
+  `question: allow` to agents in the `config` hook.
 - Agents: `agents/*.md`, registered by the plugin's `config` hook
   (`src/agents.ts`); a user's settings for an agent of the same name win
   and the bundled definition fills in the rest.

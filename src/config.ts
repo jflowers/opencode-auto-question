@@ -89,7 +89,24 @@ export const DEFAULT_CONFIG: Config = {
   verbose: false,
   registerAgents: true,
   secondOpinion: { enabled: false },
+  headless: false,
   profiles: {},
+}
+
+/** Environment variable that turns headless mode on (or off) for one process. */
+export const HEADLESS_ENV = "AUTO_QUESTION_HEADLESS"
+
+/**
+ * Headless setting from the environment: true for 1/true/yes/on, false for
+ * 0/false/no/off, undefined when unset or blank. Any other value throws, so
+ * a typo can't silently leave an unattended run waiting on a form.
+ */
+export function headlessFromEnv(env: Record<string, string | undefined> = process.env): boolean | undefined {
+  const raw = env[HEADLESS_ENV]?.trim().toLowerCase()
+  if (!raw) return undefined
+  if (["1", "true", "yes", "on"].includes(raw)) return true
+  if (["0", "false", "no", "off"].includes(raw)) return false
+  throw new ConfigError(`${HEADLESS_ENV} must be one of 1, true, yes, on, 0, false, no, off (got ${JSON.stringify(env[HEADLESS_ENV])})`)
 }
 
 /**
@@ -234,11 +251,12 @@ function resolveGlobalPath(block: Record<string, unknown>, dir: string): void {
  *
  * `sources` defaults to configSources(): the global file, then the
  * OPENCODE_CONFIG_DIR file, each deep-merged over the last. A single path is
- * one optional file.
+ * one optional file. AUTO_QUESTION_HEADLESS in `env` overrides `headless`.
  */
 export function loadConfig(
   sources: string | ConfigSource[] = configSources(),
   warn: (message: string) => void = () => {},
+  env: Record<string, string | undefined> = process.env,
 ): Config {
   const list = typeof sources === "string" ? [{ path: sources, required: false }] : sources
   let config = structuredClone(DEFAULT_CONFIG)
@@ -275,6 +293,9 @@ export function loadConfig(
   if (!isPlainObject(config.secondOpinion) || typeof config.secondOpinion.enabled !== "boolean") {
     throw new ConfigError("secondOpinion.enabled must be a boolean")
   }
+  if (typeof config.headless !== "boolean") throw new ConfigError("headless must be a boolean")
+  const headlessEnv = headlessFromEnv(env)
+  if (headlessEnv !== undefined) config.headless = headlessEnv
   normalizeBehavior(config, "")
 
   config.profiles = normalizeProfiles(config, warn)

@@ -12,9 +12,13 @@ export interface ResultRecord {
   requestID: string
   sessionID: string
   agent: string | null
-  /** What asked: an intercepted `question` call or a `second_opinion` tool call. */
-  source: "question" | "second_opinion"
-  outcome: "answered" | "deferred" | "gated" | "timeout"
+  /**
+   * What asked: an intercepted `question` call, a `second_opinion` tool
+   * call, or (headless mode) the plugin's own `question` tool.
+   */
+  source: "question" | "second_opinion" | "headless"
+  /** "partial" (headless only): some questions answered, the rest marked. */
+  outcome: "answered" | "partial" | "deferred" | "gated" | "timeout"
   /**
    * What the plugin did: replied with the decision, replied with a
    * NO_SECOND_OPINION marker, rejected a human gate, left it pending, or
@@ -37,6 +41,26 @@ export interface ResultRecord {
   engine: string | null
   model: string | null
   rationale: string | null
+  /** Why it was not answered. Null when answered. */
+  reason: string | null
+  /** Headless only: how each question ended, in the form's order. */
+  questions?: QuestionResult[]
+}
+
+/** How one question of a headless form ended. */
+export interface QuestionResult {
+  outcome: "answered" | "deferred" | "gated" | "timeout"
+  /** The selected labels (or custom answer), or null when not answered. */
+  answer: string[] | null
+  /** What the asking agent received for this question: the answer, or a marker. */
+  reply: string[]
+  confidence: number | null
+  /** The confidence the decision had to reach, when one was made. */
+  threshold: number | null
+  /** The pass as the log names it, e.g. "pass 2". */
+  pass: string | null
+  engine: string | null
+  model: string | null
   /** Why it was not answered. Null when answered. */
   reason: string | null
 }
@@ -149,6 +173,14 @@ export function compactResult(record: ResultRecord): Record<string, unknown> {
   }
   if (record.answers && record.answers.length > 1) compact.answers = record.answers
   if (record.reason) compact.reason = record.reason
+  if (record.questions) {
+    compact.questions = record.questions.map((q) => ({
+      outcome: q.outcome,
+      answer: q.answer,
+      confidence: q.confidence,
+      ...(q.reason ? { reason: q.reason } : {}),
+    }))
+  }
   return compact
 }
 
