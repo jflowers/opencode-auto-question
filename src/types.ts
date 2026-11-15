@@ -91,6 +91,27 @@ export interface SecondOpinionConfig {
   enabled: boolean
 }
 
+export interface EscalationConfig {
+  /**
+   * Instructions (a playbook) the agent receives in headless mode when a
+   * human must decide: what to do instead of deciding, e.g. comment on the
+   * PR, push WIP, end the turn. Used when `file` is empty.
+   */
+  text: string
+  /**
+   * A file holding the playbook; wins over `text`. Relative to the config
+   * file that sets it; ~ expands. Read at question time. An unreadable file
+   * falls back to the default instruction (stop and name the decision).
+   */
+  file: string
+  /**
+   * A question that isn't answered confidently: "decide" tells the agent to
+   * decide it from the evidence; "escalate" treats it like a human gate.
+   * Human gates always escalate.
+   */
+  deferred: "decide" | "escalate"
+}
+
 /** Config keys a profile may override. Everything else stays global. */
 export const PROFILE_KEYS = [
   "engine",
@@ -106,6 +127,7 @@ export const PROFILE_KEYS = [
   "handlerTimeoutMs",
   "onDefer",
   "resultTrailer",
+  "escalation",
 ] as const
 
 export type ProfileKey = (typeof PROFILE_KEYS)[number]
@@ -187,6 +209,8 @@ export interface Config {
    * the environment overrides it.
    */
   headless: boolean
+  /** What the agent is told when a human must decide (headless mode). */
+  escalation: EscalationConfig
   /** Per-agent overrides keyed by agent name (case-insensitive). */
   profiles: Record<string, ProfileConfig>
 }

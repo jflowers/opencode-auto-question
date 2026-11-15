@@ -40,7 +40,7 @@ export function configSources(env: Record<string, string | undefined> = process.
   return sources
 }
 
-function expandHome(p: string): string {
+export function expandHome(p: string): string {
   if (p === "~" || p.startsWith("~/")) return join(homedir(), p.slice(2))
   return p
 }
@@ -90,8 +90,12 @@ export const DEFAULT_CONFIG: Config = {
   registerAgents: true,
   secondOpinion: { enabled: false },
   headless: false,
+  escalation: { text: "", file: "", deferred: "decide" },
   profiles: {},
 }
+
+/** Environment variable naming an escalation playbook file for one process. */
+export const ESCALATION_ENV = "AUTO_QUESTION_ESCALATION"
 
 /** Environment variable that turns headless mode on (or off) for one process. */
 export const HEADLESS_ENV = "AUTO_QUESTION_HEADLESS"
@@ -225,12 +229,26 @@ export function readConfigFile(source: ConfigSource): Record<string, unknown> | 
   const values = interpolateEnv(raw) as Record<string, unknown>
   const dir = dirname(path)
   resolveGlobalPath(values, dir)
+  resolveEscalationFile(values, dir)
   if (isPlainObject(values.profiles)) {
     for (const profile of Object.values(values.profiles)) {
-      if (isPlainObject(profile)) resolveGlobalPath(profile, dir)
+      if (isPlainObject(profile)) {
+        resolveGlobalPath(profile, dir)
+        resolveEscalationFile(profile, dir)
+      }
     }
   }
   return values
+}
+
+/** Resolve a relative `escalation.file` in `block` against `dir`, in place. */
+function resolveEscalationFile(block: Record<string, unknown>, dir: string): void {
+  const escalation = block.escalation
+  if (!isPlainObject(escalation) || typeof escalation.file !== "string") return
+  const p = escalation.file
+  if (p.length > 0 && !isAbsolute(p) && p !== "~" && !p.startsWith("~/")) {
+    block.escalation = { ...escalation, file: resolve(dir, p) }
+  }
 }
 
 /** Resolve a relative `guidance.globalPath` in `block` against `dir`, in place. */
@@ -296,6 +314,10 @@ export function loadConfig(
   if (typeof config.headless !== "boolean") throw new ConfigError("headless must be a boolean")
   const headlessEnv = headlessFromEnv(env)
   if (headlessEnv !== undefined) config.headless = headlessEnv
+  const escalationEnv = env[ESCALATION_ENV]?.trim()
+  if (escalationEnv && isPlainObject(config.escalation)) {
+    config.escalation = { ...config.escalation, file: resolve(expandHome(escalationEnv)) }
+  }
   normalizeBehavior(config, "")
 
   config.profiles = normalizeProfiles(config, warn)
@@ -320,6 +342,12 @@ function normalizeBehavior(c: Config, prefix: string): void {
     throw new ConfigError(prefix + "onDefer must be one of: human, reject")
   }
   if (typeof c.resultTrailer !== "boolean") throw new ConfigError(prefix + "resultTrailer must be a boolean")
+  if (!isPlainObject(c.escalation)) throw new ConfigError(prefix + "escalation must be an object")
+  if (typeof c.escalation.text !== "string") throw new ConfigError(prefix + "escalation.text must be a string")
+  if (typeof c.escalation.file !== "string") throw new ConfigError(prefix + "escalation.file must be a string")
+  if (c.escalation.deferred !== "decide" && c.escalation.deferred !== "escalate") {
+    throw new ConfigError(prefix + "escalation.deferred must be one of: decide, escalate")
+  }
   if (typeof c.immediateContext !== "boolean") c.immediateContext = true
   if (typeof c.sessionSummary !== "boolean") c.sessionSummary = true
 

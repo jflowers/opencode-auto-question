@@ -146,6 +146,16 @@
   // AUTO_QUESTION_HEADLESS=1 (or 0) in the environment overrides this.
   "headless": false,
 
+  // Headless mode: what the agent is told when a human must decide. A
+  // playbook (inline text, or a file relative to this one) replaces the
+  // default instruction to stop and name the decision, e.g. "comment on the
+  // PR with the decision needed, push your work as a draft, end your turn".
+  // deferred: "decide" lets the agent decide unconfident questions itself;
+  // "escalate" treats them like human gates. Human gates always escalate.
+  // AUTO_QUESTION_ESCALATION=<path> sets the file for one process. A profile
+  // can set its own.
+  "escalation": { "text": "", "file": "", "deferred": "decide" },
+
   // Per-agent overrides, keyed by agent name (case-insensitive). Each is
   // deep-merged over the settings above for that agent's questions only.
   // Allowed keys: engine, jev, llm, confidenceThreshold, fallbackThreshold,

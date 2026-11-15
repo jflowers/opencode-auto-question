@@ -240,6 +240,31 @@
       "default": false,
       "description": "Headless mode: the plugin registers its own question tool, which answers in the tool call for every agent (not just agents), so no question form is ever shown, and allows the question tool for every agent without its own rule, subagents included. Each question is decided on its own: a confident answer is returned, the rest get a NO_SECOND_OPINION: marker; a HUMAN_GATE: question or a human-gated agent gets HUMAN_GATE_UNANSWERED for every question. onDefer and sessionSummary don't apply. Plugin-wide, not a profile key. AUTO_QUESTION_HEADLESS=1 (or 0) in the environment overrides it."
     },
+    "escalation": {
+      "type": "object",
+      "description": "What the agent is told in headless mode when a human must decide: a playbook (for example comment on the PR, push WIP, end the turn) used in place of the default instruction to stop and name the decision. A profile key.",
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "type": "string",
+          "default": "",
+          "description": "The playbook as inline text. Used when file is empty."
+        },
+        "file": {
+          "type": "string",
+          "default": "",
+          "description": "A file holding the playbook; wins over text. Relative to the config file that sets it; ~ expands. Read at question time; an unreadable file falls back to the default instruction. AUTO_QUESTION_ESCALATION=<path> sets it for one process."
+        },
+        "deferred": {
+          "enum": [
+            "decide",
+            "escalate"
+          ],
+          "default": "decide",
+          "description": "A question that isn't answered confidently: decide tells the agent to decide it from the evidence; escalate treats it like a human gate. Human gates always escalate."
+        }
+      }
+    },
     "profiles": {
       "type": "object",
       "default": {},
@@ -403,6 +428,28 @@
           "resultTrailer": {
             "type": "boolean",
             "description": "Append AUTO_QUESTION_RESULT {json} (outcome, answer, confidence, pass, engine, model, rationale, reason) as the last element of the last question's answer. The record is written to results.jsonl either way."
+          },
+          "escalation": {
+            "type": "object",
+            "description": "What the agent is told in headless mode when a human must decide: a playbook (for example comment on the PR, push WIP, end the turn) used in place of the default instruction to stop and name the decision. A profile key.",
+            "additionalProperties": false,
+            "properties": {
+              "text": {
+                "type": "string",
+                "description": "The playbook as inline text. Used when file is empty."
+              },
+              "file": {
+                "type": "string",
+                "description": "A file holding the playbook; wins over text. Relative to the config file that sets it; ~ expands. Read at question time; an unreadable file falls back to the default instruction. AUTO_QUESTION_ESCALATION=<path> sets it for one process."
+              },
+              "deferred": {
+                "enum": [
+                  "decide",
+                  "escalate"
+                ],
+                "description": "A question that isn't answered confidently: decide tells the agent to decide it from the evidence; escalate treats it like a human gate. Human gates always escalate."
+              }
+            }
           }
         }
       }
