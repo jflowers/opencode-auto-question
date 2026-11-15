@@ -1,7 +1,18 @@
-import { afterEach, describe, expect, test } from "bun:test"
-import { HEADLESS_ENV, headlessFromEnv, loadConfig } from "./config"
+import { afterAll, afterEach, describe, expect, test } from "bun:test"
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { ESCALATION_ENV, HEADLESS_ENV, headlessFromEnv, loadConfig } from "./config"
 import { loadBundledAgents, registerAgents } from "./agents"
-import { allowQuestionHeadless, formatOutput, headlessQuestionTool, parseQuestionArgs, runHeadlessQuestion } from "./headless"
+import {
+  allowQuestionHeadless,
+  DEFAULT_ESCALATION,
+  escalationPlaybook,
+  formatOutput,
+  headlessQuestionTool,
+  parseQuestionArgs,
+  runHeadlessQuestion,
+} from "./headless"
 import { createHarness, question, type Harness } from "./test-harness"
 
 const ctx = (agent = "build") => ({ sessionID: "ses_1", agent, directory: "", messageID: "msg_a" })
@@ -133,23 +144,72 @@ describe("headlessQuestionTool", () => {
   let h: Harness | undefined
   afterEach(() => h?.cleanup())
 
-  test("returns the built-in tool's output format with markers in place", async () => {
+  const run = async (h: Harness, questions: unknown[], agent = "build") =>
+    (await headlessQuestionTool(h.deps).execute({ questions } as any, ctx(agent) as any)) as {
+      title: string
+      output: string
+      metadata: any
+    }
+
+  test("every question answered: the built-in tool's wording", async () => {
+    h = createHarness({ engine: [{ answers: [["sqlite"]], confidences: [0.9] }] })
+    const result = await run(h, [question("Q?")])
+    expect(result.title).toBe("Asked 1 question (auto-answered 1/1)")
+    expect(result.output).toBe('User has answered your questions: "Q?"="sqlite". You can now continue with the user\'s answers in mind.')
+    expect(result.metadata.autoQuestion).toEqual({ v: 1, outcome: "answered", answered: 1, total: 1, humanGate: false, humanNeeded: false })
+  })
+
+  test("unconfident questions: the agent is told to decide them itself, and no human is needed", async () => {
     h = createHarness({
       engine: [{ answers: [["sqlite"], ["postgres"]], confidences: [0.9, 0.2] }],
       subagents: { context: null },
     })
     const tool = headlessQuestionTool(h.deps)
     expect(Object.keys(tool.args)).toEqual(["questions"])
-    const result = (await tool.execute({ questions: [question("Q one?"), question("Q two?")] } as any, ctx() as any)) as {
-      title: string
-      output: string
-      metadata: any
-    }
+    const result = await run(h, [question("Q one?"), question("Q two?")])
     expect(result.title).toBe("Asked 2 questions (auto-answered 1/2)")
-    expect(result.output).toBe(
-      'User has answered your questions: "Q one?"="sqlite", "Q two?"="NO_SECOND_OPINION: deferred (confidence 0.20 < 0.60, pass 1 (no gathered context))". You can now continue with the user\'s answers in mind.',
+    expect(result.output).toStartWith(
+      'Auto-answered 1 of 2 questions: "Q one?"="sqlite", "Q two?"="NO_SECOND_OPINION: deferred (confidence 0.20 < 0.60, pass 1 (no gathered context))".',
     )
-    expect(result.metadata.result.outcome).toBe("partial")
+    expect(result.output).toContain("Decide them yourself from the evidence")
+    expect(result.output).not.toContain("You can now continue")
+    expect(result.metadata.autoQuestion).toEqual({ v: 1, outcome: "partial", answered: 1, total: 2, humanGate: false, humanNeeded: false })
+  })
+
+  test("a human gate: don't decide, then the default instruction; the metadata flags it", async () => {
+    h = createHarness({ engine: [{ answers: [["sqlite"]], confidences: [0.99] }] })
+    const result = await run(h, [question("HUMAN_GATE: Merge it?")])
+    expect(result.title).toBe("Asked 1 question (human needed)")
+    expect(result.output).toContain('"HUMAN_GATE: Merge it?"="HUMAN_GATE_UNANSWERED: question carries the HUMAN_GATE: marker"')
+    expect(result.output).toContain("Do not decide them yourself")
+    expect(result.output.endsWith(DEFAULT_ESCALATION)).toBe(true)
+    expect(result.metadata.autoQuestion).toEqual({ v: 1, outcome: "gated", answered: 0, total: 1, humanGate: true, humanNeeded: true })
+    expect(h.results[0]!.humanNeeded).toBe(true)
+  })
+
+  test("a configured playbook replaces the default instruction", async () => {
+    h = createHarness({
+      engine: [{ answers: [["sqlite"]], confidences: [0.99] }],
+      config: { escalation: { text: "Comment on the PR, push WIP as a draft, end your turn.", file: "", deferred: "decide" } },
+    })
+    const result = await run(h, [question("HUMAN_GATE: Merge it?")])
+    expect(result.output.endsWith("Comment on the PR, push WIP as a draft, end your turn.")).toBe(true)
+    expect(result.output).not.toContain(DEFAULT_ESCALATION)
+  })
+
+  test('escalation.deferred "escalate" in a profile makes an unconfident question need a human', async () => {
+    h = createHarness({
+      engine: [{ answers: [["sqlite"], ["postgres"]], confidences: [0.9, 0.2] }],
+      subagents: { context: null },
+      config: { profiles: { build: { escalation: { deferred: "escalate", text: "Ask on the issue." } } } },
+    })
+    const result = await run(h, [question("Q one?"), question("Q two?")])
+    expect(result.title).toBe("Asked 2 questions (human needed)")
+    expect(result.output.endsWith("Ask on the issue.")).toBe(true)
+    expect(result.metadata.autoQuestion).toMatchObject({ outcome: "partial", humanGate: false, humanNeeded: true })
+    // Another agent keeps the default: decide it yourself.
+    const other = await run(h, [question("Q one?"), question("Q two?")], "explore")
+    expect(other.metadata.autoQuestion.humanNeeded).toBe(false)
   })
 
   test("appends the result trailer when resultTrailer is on", async () => {
@@ -173,15 +233,45 @@ describe("parseQuestionArgs", () => {
     ).toEqual([{ question: "Q?", header: "H", options: [{ label: "A", description: "a" }], multiple: true }])
   })
 
-  test("rejects bad arguments with a message the model can act on", () => {
+  test("forgives common malformed shapes", () => {
+    const expected = [{ question: "Q?", header: "", options: [{ label: "A", description: "" }, { label: "B", description: "" }] }]
+    expect(parseQuestionArgs({ questions: JSON.stringify([{ question: "Q?", options: ["A", "B"] }]) })).toEqual(expected)
+    expect(parseQuestionArgs({ questions: { question: "Q?", options: '["A","B"]' } })).toEqual(expected)
+    expect(parseQuestionArgs({ question: "Q?", options: [{ value: "A" }, { label: "B" }] })).toEqual(expected)
+    expect(parseQuestionArgs({ questions: [{ question: "Q?", options: ["A", "B"], multiple: "true" }] })[0]!.multiple).toBe(true)
+    expect(parseQuestionArgs({ questions: ["Q?"] })).toEqual([{ question: "Q?", header: "", options: [] }])
+  })
+
+  test("throws only when there is no question text", () => {
     expect(() => parseQuestionArgs({})).toThrow(/questions/)
+    expect(() => parseQuestionArgs({ questions: [] })).toThrow(/non-empty/)
     expect(() => parseQuestionArgs({ questions: [{ question: "", options: [] }] })).toThrow(/questions\[0\]\.question/)
-    expect(() => parseQuestionArgs({ questions: [{ question: "Q", options: "x" }] })).toThrow(/options must be an array/)
-    expect(() => parseQuestionArgs({ questions: [{ question: "Q", options: [{}] }] })).toThrow(/options\[0\]\.label/)
   })
 
   test("formatOutput says Unanswered for an empty reply", () => {
-    expect(formatOutput([question("Q?")], [[]])).toContain('"Q?"="Unanswered"')
+    const record = { questions: [{ outcome: "deferred" as const }] as any, humanNeeded: false }
+    expect(formatOutput([question("Q?")], [[]], record)).toContain('"Q?"="Unanswered"')
+  })
+})
+
+describe("escalationPlaybook", () => {
+  const dir = mkdtempSync(join(tmpdir(), "aq-esc-"))
+  afterAll(() => rmSync(dir, { recursive: true, force: true }))
+  const esc = (over: Partial<{ text: string; file: string }>) => ({ escalation: { text: "", file: "", deferred: "decide" as const, ...over } })
+
+  test("file, else text, else the default", () => {
+    const file = join(dir, "playbook.md")
+    writeFileSync(file, "  From the file.  \n")
+    expect(escalationPlaybook(esc({ file, text: "From text." }))).toBe("From the file.")
+    expect(escalationPlaybook(esc({ text: " From text. " }))).toBe("From text.")
+    expect(escalationPlaybook(esc({}))).toBe(DEFAULT_ESCALATION)
+  })
+
+  test("an unreadable or empty file falls back to the default, not the text", () => {
+    expect(escalationPlaybook(esc({ file: join(dir, "missing.md"), text: "From text." }))).toBe(DEFAULT_ESCALATION)
+    const empty = join(dir, "empty.md")
+    writeFileSync(empty, "\n")
+    expect(escalationPlaybook(esc({ file: empty }))).toBe(DEFAULT_ESCALATION)
   })
 })
 
@@ -236,6 +326,23 @@ describe("headless setting", () => {
     expect(headlessFromEnv({})).toBeUndefined()
     expect(headlessFromEnv({ [HEADLESS_ENV]: "  " })).toBeUndefined()
     expect(() => headlessFromEnv({ [HEADLESS_ENV]: "maybe" })).toThrow(HEADLESS_ENV)
+  })
+
+  test(`${ESCALATION_ENV} sets the playbook file; a relative file in a config resolves against it`, () => {
+    expect(loadConfig("/nonexistent/auto-question.jsonc", () => {}, {}).escalation).toEqual({ text: "", file: "", deferred: "decide" })
+    expect(loadConfig("/nonexistent/auto-question.jsonc", () => {}, { [ESCALATION_ENV]: "/etc/playbook.md" }).escalation.file).toBe("/etc/playbook.md")
+    const dir = mkdtempSync(join(tmpdir(), "aq-esc-cfg-"))
+    try {
+      const path = join(dir, "auto-question.jsonc")
+      writeFileSync(path, JSON.stringify({ escalation: { file: "playbook.md" }, profiles: { build: { escalation: { file: "b.md" } } } }))
+      const config = loadConfig(path, () => {}, {})
+      expect(config.escalation.file).toBe(join(dir, "playbook.md"))
+      expect((config.profiles.build!.escalation as { file: string }).file).toBe(join(dir, "b.md"))
+      writeFileSync(path, JSON.stringify({ escalation: { deferred: "ask" } }))
+      expect(() => loadConfig(path, () => {}, {})).toThrow(/escalation.deferred/)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 
   test("defaults off, and the environment overrides the config", () => {

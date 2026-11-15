@@ -34,6 +34,7 @@ const base: Config = {
   registerAgents: true,
   secondOpinion: { enabled: false },
   headless: false,
+  escalation: { text: "", file: "", deferred: "decide" },
 }
 
 const KEYS = ["OPENCODE_API_KEY", "OPENROUTER_API_KEY"] as const
