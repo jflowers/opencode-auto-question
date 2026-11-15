@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
+import { readFileSync } from "node:fs"
 import type { ToolContext, ToolDefinition, ToolResult } from "@opencode-ai/plugin"
-import { configForAgent } from "./config"
+import { configForAgent, expandHome } from "./config"
 import { gatherContext } from "./context"
 import { isHumanGatedAgent } from "./gate"
 import { loadGuidance } from "./guidance"
@@ -44,8 +45,7 @@ const DESCRIPTION = [
   "Usage notes:",
   "- Answers are returned as arrays of labels; set `multiple: true` to allow selecting more than one",
   '- If you recommend a specific option, make that the first option in the list and add "(Recommended)" at the end of the label',
-  `- An answer starting with ${NO_SECOND_OPINION}: means no confident answer was reached for that question: decide it yourself from the evidence, or stop and report it`,
-  `- An answer starting with ${HUMAN_GATE_UNANSWERED}: means only a human may decide it: do not proceed past it; stop and report it`,
+  `- An answer starting with ${NO_SECOND_OPINION}: or ${HUMAN_GATE_UNANSWERED}: is not an answer; follow the instructions the result gives for it`,
 ].join("\n")
 
 /**
@@ -81,32 +81,58 @@ const ARGS = {
   },
 }
 
-/** Validate and normalize tool arguments; throws with a message the calling model can act on. */
+/** Parse a JSON string, or return the value unchanged. */
+function maybeJson(value: unknown): unknown {
+  if (typeof value !== "string") return value
+  const t = value.trim()
+  if (!t.startsWith("[") && !t.startsWith("{")) return value
+  try {
+    return JSON.parse(t)
+  } catch {
+    return value
+  }
+}
+
+function asBoolean(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") return value
+  if (value === "true") return true
+  if (value === "false") return false
+  return undefined
+}
+
+/**
+ * Validate and normalize tool arguments. Forgiving about shapes models
+ * commonly get wrong (some send malformed `question` arguments): `questions`
+ * as a JSON string or a single object, a lone question at the top level,
+ * `options` as a JSON string or plain strings, a missing header, `multiple`
+ * as a string. Throws, with a message the calling model can act on, only
+ * when there is no question text to work with.
+ */
 export function parseQuestionArgs(raw: unknown): QuestionInfo[] {
-  const a = (raw ?? {}) as Record<string, unknown>
-  if (!Array.isArray(a.questions) || a.questions.length === 0) throw new Error("questions must be a non-empty array")
-  return a.questions.map((q, i) => {
-    const item = (q ?? {}) as Record<string, unknown>
-    if (typeof item.question !== "string" || item.question.trim() === "") {
-      throw new Error(`questions[${i}].question must be a non-empty string`)
-    }
-    if (item.header !== undefined && typeof item.header !== "string") throw new Error(`questions[${i}].header must be a string`)
-    if (!Array.isArray(item.options)) throw new Error(`questions[${i}].options must be an array`)
-    const options = item.options.map((o, j) => {
+  const a = (maybeJson(raw) ?? {}) as Record<string, unknown>
+  let list = maybeJson(a.questions)
+  if (list === undefined && typeof a.question === "string") list = [a]
+  if (list !== null && typeof list === "object" && !Array.isArray(list)) list = [list]
+  if (!Array.isArray(list) || list.length === 0) throw new Error("questions must be a non-empty array")
+  return list.map((q, i) => {
+    const item = (maybeJson(q) ?? {}) as Record<string, unknown>
+    const text = typeof item === "string" ? item : item.question
+    if (typeof text !== "string" || text.trim() === "") throw new Error(`questions[${i}].question must be a non-empty string`)
+    const rawOptions = typeof item === "string" ? [] : maybeJson(item.options)
+    const options = (Array.isArray(rawOptions) ? rawOptions : []).flatMap((o) => {
+      if (typeof o === "string") return o.trim() ? [{ label: o.trim(), description: "" }] : []
       const opt = (o ?? {}) as Record<string, unknown>
-      if (typeof opt.label !== "string" || opt.label.trim() === "") {
-        throw new Error(`questions[${i}].options[${j}].label must be a non-empty string`)
-      }
-      return { label: opt.label, description: typeof opt.description === "string" ? opt.description : "" }
+      const label = typeof opt.label === "string" ? opt.label : typeof opt.value === "string" ? opt.value : ""
+      if (label.trim() === "") return []
+      return [{ label, description: typeof opt.description === "string" ? opt.description : "" }]
     })
-    if (item.multiple !== undefined && typeof item.multiple !== "boolean") {
-      throw new Error(`questions[${i}].multiple must be a boolean`)
-    }
+    const header = typeof item === "string" ? "" : item.header
+    const multiple = typeof item === "string" ? undefined : asBoolean(item.multiple)
     return {
-      question: item.question,
-      header: typeof item.header === "string" ? item.header : "",
+      question: text,
+      header: typeof header === "string" ? header : header === undefined || header === null ? "" : String(header),
       options,
-      ...(item.multiple !== undefined ? { multiple: item.multiple } : {}),
+      ...(multiple !== undefined ? { multiple } : {}),
     }
   })
 }
@@ -272,6 +298,7 @@ export function buildHeadlessResult(
   request: QuestionRequest,
   slots: Slot[],
   agent: string | undefined,
+  deferred: Config["escalation"]["deferred"] = "decide",
   now: Date = new Date(),
 ): ResultRecord {
   const answered = slots.filter((s) => s.outcome === "answered")
@@ -314,15 +341,96 @@ export function buildHeadlessResult(
             ? slots[0]!.reason
             : `${unanswered} of ${slots.length} questions not answered`,
     questions: slots.map(({ done: _d, rationale: _r, ...q }) => q),
+    humanNeeded: humanNeeded(slots, deferred),
   }
 }
 
-/** The tool output, in the built-in question tool's format. */
-export function formatOutput(questions: QuestionInfo[], replies: string[][]): string {
-  const formatted = questions
+/**
+ * True when a human must decide: a human gate, or (with escalation.deferred
+ * "escalate") any question left unanswered.
+ */
+export function humanNeeded(slots: Pick<QuestionResult, "outcome">[], deferred: Config["escalation"]["deferred"]): boolean {
+  if (slots.some((s) => s.outcome === "gated")) return true
+  return deferred === "escalate" && slots.some((s) => s.outcome !== "answered")
+}
+
+/** The instruction an agent gets when a human must decide and no playbook is configured. */
+export const DEFAULT_ESCALATION =
+  "Stop now. End your turn by naming each decision a human needs to make, with its options and your recommendation."
+
+/** Most playbook characters passed to the agent. */
+const ESCALATION_MAX_CHARS = 10_000
+
+/** The playbook for `config`: its file, else its text, else the default instruction. */
+export function escalationPlaybook(config: Pick<Config, "escalation">): string {
+  const { file, text } = config.escalation
+  if (file) {
+    try {
+      const content = readFileSync(expandHome(file), "utf8").trim()
+      if (content) return content.slice(0, ESCALATION_MAX_CHARS)
+      log("warn", "escalation file is empty — using the default instruction", { file })
+    } catch (e) {
+      log("warn", "escalation file unreadable — using the default instruction", { file, error: String(e) })
+    }
+    return DEFAULT_ESCALATION
+  }
+  return text.trim() ? text.trim().slice(0, ESCALATION_MAX_CHARS) : DEFAULT_ESCALATION
+}
+
+function pairs(questions: QuestionInfo[], replies: string[][]): string {
+  return questions
     .map((q, i) => `"${q.question}"="${replies[i]?.length ? replies[i]!.join(", ") : "Unanswered"}"`)
     .join(", ")
-  return `User has answered your questions: ${formatted}. You can now continue with the user's answers in mind.`
+}
+
+/**
+ * The tool output. Every question answered: the built-in tool's wording.
+ * A human needed: the answers, then "don't decide these yourself" and the
+ * playbook. Otherwise (unconfident questions the agent may decide): the
+ * answers, then an instruction to decide those itself and say so.
+ */
+export function formatOutput(
+  questions: QuestionInfo[],
+  replies: string[][],
+  record: Pick<ResultRecord, "questions" | "humanNeeded">,
+  playbook: () => string = () => DEFAULT_ESCALATION,
+): string {
+  const results = record.questions ?? []
+  const answered = results.filter((q) => q.outcome === "answered").length
+  if (answered === questions.length) {
+    return `User has answered your questions: ${pairs(questions, replies)}. You can now continue with the user's answers in mind.`
+  }
+  const head = `Auto-answered ${answered} of ${questions.length} question${questions.length > 1 ? "s" : ""}: ${pairs(questions, replies)}.`
+  if (record.humanNeeded) {
+    return [
+      head,
+      "",
+      `A human must decide the questions answered with ${HUMAN_GATE_UNANSWERED}: or ${NO_SECOND_OPINION}:. Do not decide them yourself and do not act on a guess about them.`,
+      "",
+      playbook(),
+    ].join("\n")
+  }
+  return [
+    head,
+    "",
+    `The questions answered with ${NO_SECOND_OPINION}: got no confident answer. Decide them yourself from the evidence, and say in your reply that you did.`,
+  ].join("\n")
+}
+
+/**
+ * The stable summary in the tool part's metadata (`autoQuestion`), for tools
+ * that judge a finished session. Its shape only changes with a new `v`.
+ */
+export function contractMetadata(record: ResultRecord): Record<string, unknown> {
+  const results = record.questions ?? []
+  return {
+    v: 1,
+    outcome: record.outcome,
+    answered: results.filter((q) => q.outcome === "answered").length,
+    total: results.length,
+    humanGate: results.some((q) => q.outcome === "gated"),
+    humanNeeded: record.humanNeeded === true,
+  }
 }
 
 /** True when `agent` is one of the plugin's own subagents, which must never ask. */
@@ -394,7 +502,7 @@ export async function runHeadlessQuestion(
     }
   }
 
-  const record = buildHeadlessResult(request, slots, agent)
+  const record = buildHeadlessResult(request, slots, agent, agentConfig(deps.config, agent).escalation.deferred)
   ;(deps.recordResult ?? appendResult)(record)
   log("info", "headless question", {
     requestID: request.id,
@@ -402,8 +510,18 @@ export async function runHeadlessQuestion(
     agent,
     outcome: record.outcome,
     answered: `${record.questions!.filter((q) => q.outcome === "answered").length}/${questions.length}`,
+    humanNeeded: record.humanNeeded,
   })
   return record
+}
+
+/** The agent's profile merged over the config, or the config itself if the profile is invalid. */
+function agentConfig(config: Config, agent: string | undefined): Config {
+  try {
+    return configForAgent(config, agent)
+  } catch {
+    return config
+  }
 }
 
 /** The `question` tool registered through the plugin's `tool` hook in headless mode. */
@@ -415,19 +533,14 @@ export function headlessQuestionTool(deps: HandlerDeps): ToolDefinition {
       const questions = parseQuestionArgs(raw)
       const record = await runHeadlessQuestion(deps, questions, ctx)
       let replies = record.questions!.map((q) => q.reply)
-      const scoped = (() => {
-        try {
-          return configForAgent(deps.config, ctx.agent || undefined)
-        } catch {
-          return deps.config
-        }
-      })()
+      const scoped = agentConfig(deps.config, ctx.agent || undefined)
       if (scoped.resultTrailer) replies = withTrailer(replies, formatTrailer(record))
       const answered = record.questions!.filter((q) => q.outcome === "answered").length
+      const status = record.humanNeeded ? "human needed" : `auto-answered ${answered}/${questions.length}`
       return {
-        title: `Asked ${questions.length} question${questions.length > 1 ? "s" : ""} (auto-answered ${answered}/${questions.length})`,
-        output: formatOutput(questions, replies),
-        metadata: { answers: replies, result: record },
+        title: `Asked ${questions.length} question${questions.length > 1 ? "s" : ""} (${status})`,
+        output: formatOutput(questions, replies, record, () => escalationPlaybook(scoped)),
+        metadata: { answers: replies, autoQuestion: contractMetadata(record), result: record },
       }
     },
   }

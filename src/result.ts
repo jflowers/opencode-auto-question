@@ -45,6 +45,8 @@ export interface ResultRecord {
   reason: string | null
   /** Headless only: how each question ended, in the form's order. */
   questions?: QuestionResult[]
+  /** Headless only: a human must decide (a human gate, or an escalated deferral). */
+  humanNeeded?: boolean
 }
 
 /** How one question of a headless form ended. */

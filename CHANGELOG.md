@@ -21,6 +21,18 @@ All notable changes to this project are documented here. The format follows
   - A human gate marks every question on the form `HUMAN_GATE_UNANSWERED`.
   - Records use `source: "headless"`, a `partial` outcome and per-question
     results.
+  - When a human is needed (a human gate, or an unconfident question with
+    `escalation.deferred: "escalate"`), the agent is told not to decide those
+    questions, and then follows a playbook: `escalation.text`,
+    `escalation.file`, or `AUTO_QUESTION_ESCALATION=<path>`. The default is
+    to stop and name the decisions needed. With `"decide"` (the default), the
+    agent is told to decide unconfident questions itself and say so.
+  - A stable `autoQuestion` block in the tool part's metadata (`outcome`,
+    `answered`, `total`, `humanGate`, `humanNeeded`). The
+    `HUMAN_GATE_UNANSWERED:` and `NO_SECOND_OPINION:` markers are documented
+    as stable.
+  - The `question` tool accepts common malformed arguments (JSON strings,
+    plain-string options, a single question object) instead of failing.
 
 ## [0.3.2] - 2026-11-14
 

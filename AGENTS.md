@@ -26,7 +26,10 @@ confidence gate with subagent context gathering, human fallback.
 - Headless mode (`src/headless.ts`, `headless` / `AUTO_QUESTION_HEADLESS`):
   the plugin registers its own `question` tool in place of the built-in one,
   answers in the call per question for every agent, and adds
-  `question: allow` to agents in the `config` hook.
+  `question: allow` to agents in the `config` hook. When a human is needed it
+  returns the escalation playbook (`escalation`, `AUTO_QUESTION_ESCALATION`).
+  The markers and the `autoQuestion` metadata block are a documented
+  contract (gh-hud reads them); change them only with a new `v`.
 - Agents: `agents/*.md`, registered by the plugin's `config` hook
   (`src/agents.ts`); a user's settings for an agent of the same name win
   and the bundled definition fills in the rest.
