@@ -550,9 +550,12 @@ export function headlessQuestionTool(deps: HandlerDeps): ToolDefinition {
 /**
  * Headless mode lets every agent ask: `question: allow` globally (unless the
  * opencode config sets a global question rule) and on each defined agent
- * without its own question rule, so subagents can ask too. Human-gated
- * agents are left alone, and the plugin's own subagents get an explicit
- * deny so they can never ask. Run after the bundled agents are registered.
+ * without its own question rule, so subagents can ask too. That includes
+ * human-gated agents (issue #36): the tool never answers for them, so a
+ * gated subagent gets HUMAN_GATE_UNANSWERED and the playbook instead of a
+ * permission error. The plugin's own subagents get an explicit deny so they
+ * can never ask. `gated` lists the human-gated agents given allow (they are
+ * in `allowed` too). Run after the bundled agents are registered.
  */
 export function allowQuestionHeadless(
   opencodeConfig: { permission?: unknown; agent?: Record<string, unknown> },
@@ -566,10 +569,6 @@ export function allowQuestionHeadless(
   else (p as Record<string, unknown>)[QUESTION_TOOL] = "allow"
 
   for (const [name, def] of Object.entries(opencodeConfig.agent ?? {})) {
-    if (isHumanGatedAgent(name, config.humanGatedAgents)) {
-      out.gated.push(name)
-      continue
-    }
     if (def === null || typeof def !== "object" || Array.isArray(def)) {
       out.kept.push(name)
       continue
@@ -587,6 +586,7 @@ export function allowQuestionHeadless(
       ;(perm as Record<string, unknown>)[QUESTION_TOOL] = action
     }
     ;(action === "allow" ? out.allowed : out.denied).push(name)
+    if (action === "allow" && isHumanGatedAgent(name, config.humanGatedAgents)) out.gated.push(name)
   }
   return out
 }

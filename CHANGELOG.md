@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- Headless mode: human-gated agents now get `question: allow` like any other
+  agent without their own `question` rule (issue #36). As a subagent, such
+  an agent (dewey's curator, for example) used to hit a permission error and
+  could go on to decide the gated question itself. Now it gets
+  `HUMAN_GATE_UNANSWERED` and the escalation playbook. An explicit rule on
+  the agent still wins, and nothing changes outside headless mode.
+
 ## [0.4.0] - 2026-11-15
 
 ### Added

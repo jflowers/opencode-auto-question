@@ -170,7 +170,7 @@ const plugin: Plugin = async (input) => {
             allowed: r.allowed,
             deniedInternal: r.denied,
             keptExplicitRule: r.kept,
-            humanGated: r.gated,
+            humanGatedAllowed: r.gated,
           })
         } catch (e) {
           log("error", "headless question permissions failed", { error: String(e) })
