@@ -1,75 +1,47 @@
 name: Publish
 
-# Publishes to npm when a version tag is pushed (git tag v0.2.0 && git push origin v0.2.0).
-# The tag must match package.json's version. A version already on npm is skipped.
+# Publishes to npm, run from main with the version tag:
+#   gh workflow run publish.yml -f tag=v0.5.0
+# The pipeline is jflowers/ship's shared npm-release.yml: org-infra's
+# preflight (semver, tag uniqueness, CI on HEAD, unreleased commits) creates
+# the tag, then the tag is checked out, package.json's version must equal
+# it, the checks below run, and the package is published with provenance.
 #
-# Auth: npm trusted publishing (OIDC). npmjs.com trusts this repository and this
-# workflow file for the package, so no npm token is used; id-token: write below
-# lets the job request the OIDC token. Renaming this file breaks publishing until
-# the trusted publisher on npmjs.com is updated to match.
+# Auth: npm trusted publishing (OIDC), no token. npm checks the calling
+# workflow, so npmjs.com trusts this repository and this file (publish.yml),
+# not ship's. Renaming this file breaks publishing until the trusted
+# publisher on npmjs.com is updated to match.
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag; package.json's version must match (e.g. v0.5.0)
+        required: true
+        type: string
 
-permissions:
-  contents: read
-  id-token: write
+permissions: {}
 
 concurrency:
   group: publish
   cancel-in-progress: false
 
 jobs:
-  npm:
-    name: Publish to npm
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.4.4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22.x"
-          registry-url: https://registry.npmjs.org
-
-      - name: Check version
-        id: package
-        run: |
-          NAME=$(node -p "require('./package.json').name")
-          VERSION=$(node -p "require('./package.json').version")
-          if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ "${GITHUB_REF_NAME}" != "v${VERSION}" ]; then
-            echo "::error::tag ${GITHUB_REF_NAME} does not match package.json version ${VERSION}"
-            exit 1
-          fi
-          if npm view "${NAME}@${VERSION}" version >/dev/null 2>&1; then
-            echo "published=true" >> "$GITHUB_OUTPUT"
-            echo "${NAME}@${VERSION} is already on npm; nothing to do."
-          else
-            echo "published=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      # bun install runs the prepare script, which builds dist/.
-      - name: Install and build
-        if: steps.package.outputs.published == 'false'
-        run: bun install --frozen-lockfile
-
-      - name: Typecheck
-        if: steps.package.outputs.published == 'false'
-        run: bun run typecheck
-
-      - name: Test
-        if: steps.package.outputs.published == 'false'
-        run: bun test
-
-      - name: Verify package
-        if: steps.package.outputs.published == 'false'
-        run: bun run verify:package
-
-      - name: Publish
-        if: steps.package.outputs.published == 'false'
-        run: npx --yes --package npm@11 npm publish --access public --provenance --ignore-scripts
+  release:
+    name: Release
+    uses: jflowers/ship/.github/workflows/npm-release.yml@bf09d24bd206ce8f9f1f44ea1479afa5ca11532d # v0.3.0
+    with:
+      tag: ${{ inputs.tag }}
+      ci_checks: '["typecheck and test"]'
+      node_version: "22"
+      bun_version: 1.4.4
+      # Also builds dist/ through the prepare script; scripts don't run at
+      # publish, so this build is what ships.
+      install: bun install --frozen-lockfile
+      checks: |
+        bun run typecheck
+        bun test
+        bun run verify:package
+    permissions:
+      contents: write
+      checks: read
+      id-token: write
