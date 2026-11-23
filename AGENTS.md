@@ -38,12 +38,24 @@ confidence gate with subagent context gathering, human fallback.
   (`bunfig.toml`), which points it at a temp dir so tests never write to
   the real log.
 - Release: in a PR, bump `version` in `package.json` and move the
-  `CHANGELOG.md` entries under the new version. After it merges, push tag
-  `v<version>` from `main`; `.github/workflows/publish.yml` publishes to npm.
-  It authenticates through npm trusted publishing (OIDC: package settings on
-  npmjs.com trust `jflowers/opencode-auto-question` + `publish.yml`), so no
-  npm token exists or is needed. The package's publishing access disallows
-  tokens; publishing by hand needs the maintainer's 2FA.
+  `CHANGELOG.md` entries under the new version. After it merges, run
+  `.github/workflows/publish.yml` from `main` with the tag
+  (`gh workflow run publish.yml -f tag=v<version>`); it creates the tag and
+  publishes to npm. Don't push the tag yourself. It authenticates through
+  npm trusted publishing (OIDC: package settings on npmjs.com trust
+  `jflowers/opencode-auto-question` + `publish.yml`), so no npm token
+  exists or is needed. The package's publishing access disallows tokens;
+  publishing by hand needs the maintainer's 2FA. Renaming `publish.yml`
+  breaks publishing until the trusted publisher is updated to match.
+- `publish.yml` only calls the shared pipeline in
+  [`jflowers/ship`](https://github.com/jflowers/ship)
+  (`.github/workflows/npm-release.yml`), pinned by commit SHA: org-infra's
+  preflight creates the tag, then ship checks `package.json` against it,
+  installs (which builds `dist/`), runs the checks listed in `publish.yml`
+  and publishes with provenance. Lifecycle scripts don't run at publish, so
+  the install's build is what ships. Releasing through ship is deliberate;
+  fix the pipeline there and bump the pin, rather than moving it back into
+  this repo. Keep the `checks` in `publish.yml` in step with `ci.yml`.
 
 Verify changes with `bun run typecheck && bun test && bun run build && bun run verify:package`
 (CI runs all of them on every pull request: `.github/workflows/ci.yml`).
