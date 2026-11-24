@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-11-24
+
+### Changed
+- Releases are published by `jflowers/ship`'s shared npm workflow,
+  dispatched with the tag, and each release now gets a GitHub release
+  with generated notes. The package itself is unchanged.
+
 ## [0.4.2] - 2026-11-15
 
 ### Added
@@ -195,7 +202,8 @@ First release on npm, as `opencode-auto-question`.
   every question for a human: v2 replaced question events with forms, and its
   plugin API does not expose answering a form.
 
-[Unreleased]: https://github.com/jflowers/opencode-auto-question/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/jflowers/opencode-auto-question/compare/v0.4.3...HEAD
+[0.4.3]: https://github.com/jflowers/opencode-auto-question/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/jflowers/opencode-auto-question/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/jflowers/opencode-auto-question/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/jflowers/opencode-auto-question/compare/v0.3.2...v0.4.0
