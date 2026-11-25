@@ -37,8 +37,9 @@ confidence gate with subagent context gathering, human fallback.
   `$AUTO_QUESTION_LOG_DIR`. `bun test` preloads `src/test-preload.ts`
   (`bunfig.toml`), which points it at a temp dir so tests never write to
   the real log.
-- Release: in a PR, bump `version` in `package.json` and move the
-  `CHANGELOG.md` entries under the new version. After it merges, run
+- Release: in a PR, move the `CHANGELOG.md` entries under the new
+  version. There's no version bump: `package.json` holds
+  `0.0.0-development`, and the release sets the version from the tag. After it merges, run
   `.github/workflows/publish.yml` from `main` with the tag
   (`gh workflow run publish.yml -f tag=v<version>`); it creates the tag,
   publishes to npm and creates the GitHub release. Don't push the tag
@@ -51,7 +52,7 @@ confidence gate with subagent context gathering, human fallback.
 - `publish.yml` only calls the shared pipeline in
   [`jflowers/ship`](https://github.com/jflowers/ship)
   (`.github/workflows/npm-release.yml`), pinned by commit SHA: org-infra's
-  preflight creates the tag, then ship checks `package.json` against it,
+  preflight creates the tag, then ship sets `package.json`'s version from it,
   installs (which builds `dist/`), runs the checks listed in `publish.yml`,
   publishes with provenance and creates the GitHub release. Lifecycle
   scripts don't run at publish, so the install's build is what ships.
